@@ -10,25 +10,25 @@ class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=5, stride=1, padding=2)
-        self.norm1 = nn.BatchNorm2d(32, track_running_stats=False)
+        self.bn1 = nn.BatchNorm2d(32, track_running_stats=False)
         self.relu1 = nn.ReLU()
         self.maxpool1 = nn.MaxPool2d(kernel_size=2)
 
         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=2)
-        self.norm2 = nn.BatchNorm2d(64, track_running_stats=False)
+        self.bn2 = nn.BatchNorm2d(64, track_running_stats=False)
         self.relu2 = nn.ReLU()
         self.maxpool2 = nn.MaxPool2d(kernel_size=2)
 
         self.fc1 = nn.Linear(4096, 4096)
-        # self.norm3 = nn.BatchNorm1d(4096, track_running_stats=False)
+        self.bn3 = nn.BatchNorm1d(4096, track_running_stats=False)
         self.relu3 = nn.ReLU()
 
         self.fc2 = nn.Linear(4096, 10)
 
-        self.modules = [self.conv1, self.norm1, self.relu1, self.maxpool1,
-                        self.conv2, self.norm2, self.relu2, self.maxpool2,
+        self.modules = [self.conv1, self.bn1, self.relu1, self.maxpool1,
+                        self.conv2, self.bn2, self.relu2, self.maxpool2,
                         nn.Flatten(1),
-                        self.fc1, self.relu3,
+                        self.fc1, self.bn3, self.relu3,
                         self.fc2]
 
     def forward(self, x,
@@ -54,11 +54,11 @@ class Net(nn.Module):
 
 
     def get_pruning_graph(self):
-        return {
-            self.conv1: [self.conv2, self.norm1],
-            self.conv2: [self.fc1, self.norm2, ],
-            self.fc1: [self.fc2],
-        }
+        return [
+            (self.fc1, [self.fc2, self.bn3]),
+            (self.conv2, [self.fc1, self.bn2]),
+            (self.conv1, [self.conv2, self.bn1]),
+        ]
 
 
 def get_model_with_name():
@@ -89,8 +89,17 @@ def get_dataset_and_loaders(use_cuda=torch.cuda.is_available()):
         ),
     )
 
+    train_set, val_set = torch.utils.data.random_split(dataset, [len(dataset) - 1000, 1000])
+
     train_loader = torch.utils.data.DataLoader(
-        dataset,
+        train_set,
+        batch_size=100,
+        shuffle=True,
+        **kwargs,
+    )
+
+    validation_loader = torch.utils.data.DataLoader(
+        val_set,
         batch_size=100,
         shuffle=True,
         **kwargs,
@@ -112,7 +121,7 @@ def get_dataset_and_loaders(use_cuda=torch.cuda.is_available()):
         **kwargs,
     )
 
-    return dataset, train_loader, test_loader
+    return dataset, train_loader, validation_loader, test_loader
 
 
 

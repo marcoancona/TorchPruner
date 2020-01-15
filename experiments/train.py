@@ -45,10 +45,10 @@ args = parser.parse_args()
 experiment = experiments[args.experiment]
 if experiments is None:
     raise RuntimeError(f"--model not valid, must be in {list(experiments.keys())}")
-
+assert args.sparsity >= 0, "--sparsity must be > 0 (or 0 for dynamic sparsity)"
 
 experiment_id = (
-    f"{experiment}_{args.pruning_logic}_{args.sparsity}_{args.pruning_steps}steps"
+    f"{args.experiment}_{args.pruning_logic}_{args.sparsity}_{args.pruning_steps}steps"
 )
 timestamp_id = now()
 
@@ -119,7 +119,7 @@ def main():
     # torch.manual_seed(args.seed)
     device = torch.device("cuda" if use_cuda else "cpu")
 
-    dataset, train_loader, test_loader = experiment.get_dataset_and_loaders(use_cuda)
+    dataset, train_loader, validation_loader, test_loader = experiment.get_dataset_and_loaders(use_cuda)
 
     # Print dataset info and infer input size
     batch, _ = next(iter(test_loader))
@@ -131,19 +131,19 @@ def main():
     model = model.to(device)
 
     summary(model, input_size=input_size, device="cuda" if use_cuda else "cpu")
+    optimizer = experiment.get_optimizer_for_model(model)
 
     pruner = ContinuousPruner(
         model,
         input_size=input_size,
         pruning_graph=model.get_pruning_graph(),
         device=device,
-        data_loader=train_loader,
-        test_data_loader=test_loader,
+        data_loader=validation_loader,
+        test_data_loader=test_loader,  # for debugging and plotting only
         loss=experiment.loss,
         verbose=1,
     )
 
-    optimizer = experiment.get_optimizer_for_model(model)
 
     sparsity = args.sparsity
     pruning_steps = args.pruning_steps
@@ -151,8 +151,9 @@ def main():
     if pruning_steps == 0 and 0 < sparsity < 1.0:
         # Pruning before training if steps == 0
         # Effectively, this means training a smaller network from scratch
-        pruner.prune(sparsity, args.pruning_logic)
+        opt_state = pruner.prune(sparsity, args.pruning_logic, optimizer)
         optimizer = experiment.get_optimizer_for_model(model)
+        optimizer.load_state_dict(opt_state)
 
     for epoch in range(1, args.epochs + 1):
 
@@ -173,12 +174,13 @@ def main():
         prune_time = 0.0
 
         if 1 <= epoch <= pruning_steps and sparsity < 1.0:
-            pruner.prune(
+            opt_state = pruner.prune(
                 pow(sparsity, 1 / pruning_steps),
-                False,
                 args.pruning_logic,
+                optimizer
             )
-            optimizer = experiment.get_optimizer(model)
+            optimizer = experiment.get_optimizer_for_model(model)
+            optimizer.load_state_dict(opt_state)
             prune_time = timer() - start
             test(args, model, device, test_loader)
 

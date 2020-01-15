@@ -39,7 +39,7 @@ class ContinuousPruner:
         self._run_forward()
         self._register_hooks()
 
-    def prune(self, sparsity_ratio, ranking_method):
+    def prune(self, sparsity_ratio, ranking_method, optimizer):
         """
         Remove a given percentage of nodes from the network.
         If global_ranking=True, all prunable nodes will be ranked together, otherwise
@@ -49,10 +49,11 @@ class ContinuousPruner:
         :param ranking_method:
         :return:
         """
-        remove_ratio = 1.0 - sparsity_ratio
+        remove_ratio = 1.0 - sparsity_ratio if sparsity_ratio > 0 else None
         self.performing_pruning = True
+        self.opt_state_dict = optimizer.state_dict()
         # remove_indices = self._get_pruning_indices(remove_ratio, global_ranking, ranking_method)
-        for module in list(self.pruning_graph.keys())[::-1]:
+        for module, cascading_modules in self.pruning_graph:
 
             # Estimates scores for the activations of the current module
             indices_to_remove = self._get_pruning_indices(
@@ -66,7 +67,7 @@ class ContinuousPruner:
             # First, prune cascading modules
             # Note: we need to prune first cascading modules because we need to be able to first run
             # a forward pass to compute the pruning mask of the cascading modules
-            for next_module in self.pruning_graph[module]:
+            for next_module in cascading_modules:
                 indices = self._get_indices_mapping_for_pruning(
                     module, next_module, indices_to_remove
                 )
@@ -87,6 +88,12 @@ class ContinuousPruner:
         # Just to test that the new network works, we run a forward pass. TODO: remove
         self._run_forward()
         self._zero_gradients()
+
+        # Important! 'params' in opt state must be sorted as the model parameters to load
+        # everything correctly. Took me ages to find out the problem.
+        model_parameters_ids = [id(p) for p in self.model.parameters()]
+        self.opt_state_dict['param_groups'][0]['params'] = model_parameters_ids
+        return self.opt_state_dict
 
     def _get_pruning_indices(self, module, ranking_method, pruning_ratio):
         scores, indices = None, None
@@ -110,7 +117,7 @@ class ContinuousPruner:
         if "-abs" in ranking_method:
             scores = np.abs(scores)
 
-        if pruning_ratio > 0:
+        if pruning_ratio is not None:
             # Fixed pruning ratio
             N = len(scores)
             k = int(pruning_ratio * N)
@@ -118,7 +125,7 @@ class ContinuousPruner:
         else:
             # Dynamic pruning (how many to remove is not fixed)
             if "zeros" in ranking_method:
-                indices = np.argwhere(np.abs(scores) < 0.0001).flatten()
+                indices = np.argwhere(np.abs(scores) < 0.001).flatten()
             elif "nonpositive" in ranking_method:
                 indices = np.argwhere(scores <= 0.0).flatten()
             else:
@@ -203,7 +210,7 @@ class ContinuousPruner:
         # Find which weight indices we need to prune
         # print (activations)
         activations.sum().backward()
-        grad = next_module.weight.grad.detach().cpu().numpy()
+        grad = next_module.weight.grad.clone().detach().cpu().numpy()
         if len(grad.shape) > 1:
             # print ("Grad shape", grad.shape)
             grad = grad.sum(0)
@@ -267,6 +274,7 @@ class ContinuousPruner:
     def _fast_estimate_sv_for_module(self, module, sv_samples=5):
         # Estimate Shapley Values of module's output nodes
         n = module.weight.shape[0]
+
         with torch.no_grad():
             data, target = next(iter(self.data_loader))
             data, target = data.to(self.device), target.to(self.device)
@@ -357,20 +365,44 @@ class ContinuousPruner:
 
         # Prune replacing weights
         if prune_axis_weight is not None:
-            module.weight = nn.Parameter(
-                module.weight.index_select(
-                    prune_axis_weight, torch.tensor(keep_indices).to(self.device)
-                ),
-                requires_grad=True,
-            )
+            old_id = id(module.weight)
+            with torch.no_grad():
+                module.weight = nn.Parameter(
+                    module.weight.index_select(
+                        prune_axis_weight, torch.tensor(keep_indices).to(self.device)
+                    ),
+                    requires_grad=True,
+                )
+                new_id = id(module.weight)
+                self._update_optimizer(old_id, new_id, prune_axis_weight, keep_indices, module.weight)
 
         if prune_axis_bias is not None:
-            module.bias = nn.Parameter(
-                module.bias.index_select(
-                    prune_axis_bias, torch.tensor(keep_indices).to(self.device)
-                ),
-                requires_grad=True,
-            )
+            old_id = id(module.bias)
+            with torch.no_grad():
+                module.bias = nn.Parameter(
+                    module.bias.index_select(
+                        prune_axis_bias, torch.tensor(keep_indices).to(self.device)
+                    ),
+                    requires_grad=True,
+                )
+                new_id = id(module.bias)
+                self._update_optimizer(old_id, new_id, prune_axis_bias, keep_indices, module.bias)
+
+    def _update_optimizer(self, old_id, new_id, prune_axis, keep_indices, new_weight):
+        momentum = self.opt_state_dict["state"][old_id]["momentum_buffer"]
+        momentum = momentum.index_select(
+            prune_axis, torch.tensor(keep_indices).to(self.device)
+        )
+        assert momentum.shape == new_weight.shape
+        assert new_id == id(new_weight)
+        del self.opt_state_dict["state"][old_id]
+        self.opt_state_dict["state"][new_id] = {
+                'momentum_buffer': momentum,
+        }
+        self.opt_state_dict['param_groups'][0]['params'].remove(old_id)
+        self.opt_state_dict['param_groups'][0]['params'].append(new_id)
+        for p in self.opt_state_dict["state"]:
+            print ( self.opt_state_dict["state"][p]["momentum_buffer"].shape)
 
     def _register_hooks(self):
         for name, module in self.model.named_modules():
