@@ -82,12 +82,13 @@ class ContinuousPruner:
 
         # Reset all statistics
         self._zero_gradients()
-        self.performing_pruning = False
         self.activation_cum_grad = {}
         self.activation_counts = {}
         # Just to test that the new network works, we run a forward pass. TODO: remove
         self._run_forward()
         self._zero_gradients()
+        self.performing_pruning = False
+
 
         # Important! 'params' in opt state must be sorted as the model parameters to load
         # everything correctly. Took me ages to find out the problem.
@@ -406,7 +407,7 @@ class ContinuousPruner:
 
     def _register_hooks(self):
         for name, module in self.model.named_modules():
-            if hasattr(module, "weight") and module in self.pruning_graph:
+            if hasattr(module, "weight"):
                 # self.prunable_layers.append(module)
                 module.register_forward_hook(self._forward_hook)
                 module.register_backward_hook(self._backward_hook)
@@ -415,7 +416,7 @@ class ContinuousPruner:
     def _forward_hook(self, module, input, output):
         if not self.performing_pruning:
             output_np = output.cpu().detach().clone().numpy()
-            if module not in self.activation_cum_grad:
+            if module not in self.activation_counts:
                 self.activation_counts[module] = np.zeros(output[0].shape, "int")
             self.activation_counts[module] += (output_np > 0).sum(0)
 

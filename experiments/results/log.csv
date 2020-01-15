@@ -1,0 +1,2 @@
+timestamp,epoch,train_acc,test_acc,train_loss,test_loss,n_params,n_params_full,activations,train_time,prune_time,experiment
+20200115T233619,1,0.8696101694915255,0.8937,0.38240219449340285,0.30519719868898393,3820217,16849994,3820217,34.72240755148232,8.335871434770525,fmnist_sv-zeros_0.0_30steps

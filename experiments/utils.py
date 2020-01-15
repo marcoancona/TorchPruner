@@ -19,6 +19,8 @@ def log(
     train_loss,
     test_loss,
     n_params,
+    n_params_full,
+    activations,
     train_time,
     prune_time,
 ):
@@ -31,6 +33,8 @@ def log(
             "train_loss",
             "test_loss",
             "n_params",
+            "n_params_full",
+            "activations",
             "train_time",
             "prune_time",
             "experiment",
@@ -47,11 +51,21 @@ def log(
                 "train_loss": train_loss,
                 "test_loss": test_loss,
                 "n_params": n_params,
+                "n_params_full": n_params_full,
+                "activations": activations,
                 "train_time": train_time,
                 "prune_time": prune_time,
                 "experiment": experiment_name,
             }
         )
+
+
+def get_layer_sizes(model):
+    summary = []
+    for m, _ in model.get_pruning_graph():
+        summary.append(m.weight.shape[0])
+    return str(summary).replace(", ", "-").replace("[", "").replace("]", "")
+
 
 def get_parameter_count(model):
     model_parameters = filter(lambda p: p.requires_grad, model.parameters())

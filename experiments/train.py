@@ -3,9 +3,9 @@ import argparse
 from timeit import default_timer as timer
 import torch
 from shapley_pruning.prunable import ContinuousPruner
-from torchsummary import summary
+from torchsummary import summary, torchsummary
 
-from experiments.utils import now, log, get_parameter_count
+from experiments.utils import now, log, get_parameter_count, get_layer_sizes
 import experiments.models.fmnist as fmnist
 
 
@@ -132,6 +132,7 @@ def main():
 
     summary(model, input_size=input_size, device="cuda" if use_cuda else "cpu")
     optimizer = experiment.get_optimizer_for_model(model)
+    initial_parameters = get_parameter_count(model)
 
     pruner = ContinuousPruner(
         model,
@@ -193,6 +194,8 @@ def main():
             train_loss,
             test_loss,
             get_parameter_count(model),
+            initial_parameters,
+            get_layer_sizes(model),
             train_time,
             prune_time,
         )
