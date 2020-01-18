@@ -13,6 +13,7 @@ class Net(nn.Module):
         self.bn1 = nn.BatchNorm2d(32, track_running_stats=False)
         self.relu1 = nn.ReLU()
         self.maxpool1 = nn.MaxPool2d(kernel_size=2)
+        # self.dropout = nn.Dropout(0.25)
 
         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=2)
         self.bn2 = nn.BatchNorm2d(64, track_running_stats=False)
@@ -22,6 +23,7 @@ class Net(nn.Module):
         self.fc1 = nn.Linear(4096, 4096)
         self.bn3 = nn.BatchNorm1d(4096, track_running_stats=False)
         self.relu3 = nn.ReLU()
+        # self.dropout_fc = nn.Dropout(0.5)
 
         self.fc2 = nn.Linear(4096, 10)
 
@@ -69,7 +71,7 @@ def loss(output, target, reduction = "mean"):
     return F.nll_loss(F.log_softmax(output, dim=1), target, reduction=reduction)
 
 
-def get_optimizer_for_model(model):
+def get_optimizer_for_model(model, _):
     learning_rate = 0.015
     moment = 0.9
     return optim.SGD(model.parameters(), lr=learning_rate, momentum=moment, nesterov=True)
@@ -84,6 +86,8 @@ def get_dataset_and_loaders(use_cuda=torch.cuda.is_available()):
         download=True,
         transform=transforms.Compose(
             [
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomRotation(10),
                 transforms.ToTensor(),
             ]
         ),
@@ -100,8 +104,8 @@ def get_dataset_and_loaders(use_cuda=torch.cuda.is_available()):
 
     validation_loader = torch.utils.data.DataLoader(
         val_set,
-        batch_size=100,
-        shuffle=True,
+        batch_size=1000,
+        shuffle=False,
         **kwargs,
     )
 

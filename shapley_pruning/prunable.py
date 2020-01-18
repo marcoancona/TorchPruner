@@ -1,11 +1,10 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import numpy as np
+import json
 from torchsummary import summary
 import matplotlib.pyplot as plt
-from timeit import default_timer as timer
-
+from experiments.utils import log_dict
 
 class ContinuousPruner:
     def __init__(
@@ -18,6 +17,7 @@ class ContinuousPruner:
         test_data_loader,
         loss,
         verbose=0,
+        experiment_id="experiment"
     ):
         self.model = model
         # self.prevent_pruning = prevent_pruning if prevent_pruning is not None else []
@@ -35,11 +35,29 @@ class ContinuousPruner:
         self.data_loader = data_loader
         self.test_data_load = test_data_loader
         self.loss = loss
+        self.experiment_id = experiment_id
+
+        self._ranking_method = None
+        self._max_loss_increase = None
+        self._epoch = 0
 
         self._run_forward()
         self._register_hooks()
 
-    def prune(self, sparsity_ratio, ranking_method, optimizer):
+    def state_dict(self):
+        return {
+            "activation_counts": self.activation_counts,
+            "activation_cum_grad" : self.activation_cum_grad
+        }
+
+    def load_state_dict(self, state):
+        self.activation_cum_grad = state["activation_cum_grad"]
+        self.activation_counts = state["activation_counts"]
+
+
+    def prune(
+        self, sparsity_ratio, ranking_method, optimizer, max_loss_increase_percent=None, epoch=0
+    ):
         """
         Remove a given percentage of nodes from the network.
         If global_ranking=True, all prunable nodes will be ranked together, otherwise
@@ -49,36 +67,53 @@ class ContinuousPruner:
         :param ranking_method:
         :return:
         """
+
+        self._ranking_method = ranking_method
+        self._max_loss_increase = max_loss_increase_percent
+        self._epoch = epoch
+
         remove_ratio = 1.0 - sparsity_ratio if sparsity_ratio > 0 else None
+        assert remove_ratio is not None or max_loss_increase_percent is not None
+        assert not (remove_ratio is not None and max_loss_increase_percent is not None)
         self.performing_pruning = True
         self.opt_state_dict = optimizer.state_dict()
-        # remove_indices = self._get_pruning_indices(remove_ratio, global_ranking, ranking_method)
-        for module, cascading_modules in self.pruning_graph:
 
-            # Estimates scores for the activations of the current module
-            indices_to_remove = self._get_pruning_indices(
-                module, ranking_method, pruning_ratio=remove_ratio
-            )
+        # Prune layers one at the time
+        module_to_prune = max(0, (epoch-1)) % len(self.pruning_graph)
+        for module, cascading_modules in self.pruning_graph[module_to_prune:module_to_prune+1]:
 
             if self.verbose > 0:
                 print(f"Pruning {module}")
+
+            # Estimates scores for the activations of the current module
+            indices_to_remove = self._get_pruning_indices(
+                module,
+                ranking_method,
+                pruning_ratio=remove_ratio,
+                max_loss_increase_percent=max_loss_increase_percent,
+            )
+
+            if self.verbose > 0:
                 print(f"Removing {len(indices_to_remove)} activations")
 
             # First, prune cascading modules
             # Note: we need to prune first cascading modules because we need to be able to first run
             # a forward pass to compute the pruning mask of the cascading modules
             for next_module in cascading_modules:
+                if self.verbose > 0:
+                    print(f"-->\tCascade pruning {next_module}")
                 indices = self._get_indices_mapping_for_pruning(
                     module, next_module, indices_to_remove
                 )
-                # print (indices)
+                if self.verbose > 0:
+                    print(f"-->\tRemoving {len(indices)} cascading activations")
                 self._prune_module(next_module, "in", indices)
 
             # Then proceed with pruning of the current module
             self._prune_module(module, "out", indices_to_remove)
 
-        if self.verbose > 0:
-            summary(self.model, input_size=self.input_size, device=self.device.type)
+            if self.verbose > 0:
+                summary(self.model, input_size=self.input_size, device=self.device.type)
 
         # Reset all statistics
         self._zero_gradients()
@@ -89,22 +124,29 @@ class ContinuousPruner:
         self._zero_gradients()
         self.performing_pruning = False
 
-
         # Important! 'params' in opt state must be sorted as the model parameters to load
         # everything correctly. Took me ages to find out the problem.
         model_parameters_ids = [id(p) for p in self.model.parameters()]
-        self.opt_state_dict['param_groups'][0]['params'] = model_parameters_ids
+        self.opt_state_dict["param_groups"][0]["params"] = model_parameters_ids
         return self.opt_state_dict
 
-    def _get_pruning_indices(self, module, ranking_method, pruning_ratio):
+    def _module_name(self, module):
+        for module_name, m in self.model.named_modules():
+            if module == m:
+                return module_name
+        return None
+
+    def _get_pruning_indices(
+        self, module, ranking_method, pruning_ratio, max_loss_increase_percent
+    ):
         scores, indices = None, None
 
         if ranking_method.startswith("random"):
             scores = np.random.random(module.weight.shape[0])
         elif ranking_method.startswith("grad"):
-            scores = self.activation_cum_grad[module]
+            scores = self.activation_cum_grad[self._module_name(module)]
         elif ranking_method.startswith("count"):
-            scores = self.activation_counts[module]
+            scores = self.activation_counts[self._module_name(module)]
         elif ranking_method.startswith("sv"):
             scores = self._fast_estimate_sv_for_module(module)
 
@@ -124,13 +166,14 @@ class ContinuousPruner:
             k = int(pruning_ratio * N)
             indices = np.argsort(scores)[:k]
         else:
-            # Dynamic pruning (how many to remove is not fixed)
-            if "zeros" in ranking_method:
-                indices = np.argwhere(np.abs(scores) < 0.001).flatten()
-            elif "nonpositive" in ranking_method:
-                indices = np.argwhere(scores <= 0.0).flatten()
-            else:
-                raise RuntimeError("Criteria for dynamic pruning not understood")
+            # Dynamic pruning (how many to remove is based on max_loss_increase_percent)
+            indices, loss_increment = self._compute_dynamic_pruning_indices(module, scores, max_loss_increase_percent)
+            # if "zeros" in ranking_method:
+            #     indices = np.argwhere(np.abs(scores) < 0.001).flatten()
+            # elif "nonpositive" in ranking_method:
+            #     indices = np.argwhere(scores <= 0.0).flatten()
+            # else:
+            #     raise RuntimeError("Criteria for dynamic pruning not understood")
 
         if self.verbose > 0:
             print(f"Sum of scores of removed indices: {scores[indices].sum()}")
@@ -198,29 +241,20 @@ class ContinuousPruner:
         activations, _, __ = self._run_forward(
             return_intermediate_output_module=next_module, linearize=True
         )
-        # activations, _, __ = self._run_forward(
-        #     x=activations_current[1:2],
-        #     process_as_intermediate_output_module=module,
-        #     return_intermediate_output_module=next_module,
-        #     linearize=True
-        # )
-        # print (len(pruning_indices))
-        # print (torch.isnan(activations_current[0]).sum())
-        # print (torch.isnan(activations[0]).sum())
 
-        # Find which weight indices we need to prune
-        # print (activations)
+        print (f"Found {torch.isnan(activations).sum()} nan activations")
+        # print (f"-- {activations.shape} act shape")
         activations.sum().backward()
+        print (next_module.weight.grad)
+        # print (next_module.weight.grad.requires_grad)
         grad = next_module.weight.grad.clone().detach().cpu().numpy()
+        # print(f"Found {torch.isnan(next_module.weight.grad).sum()} nan gradients")
         if len(grad.shape) > 1:
             # print ("Grad shape", grad.shape)
             grad = grad.sum(0)
             while len(grad.shape) > 1:
                 grad = grad.sum(-1)
-        mask_indices = np.argwhere(np.isnan(grad))
-        # print (mask_indices.shape)
-        # print(mask_indices)
-        # print (len(mask_indices))
+        mask_indices = np.argwhere(np.ma.mask_or(np.isnan(grad), np.isinf(grad)))
         if len(mask_indices) > 0:
             if len(mask_indices[0].shape) == 1:
                 indices = np.unique(mask_indices.flatten())
@@ -272,6 +306,59 @@ class ContinuousPruner:
                 plt.legend()
                 plt.savefig(f"{str(module)}_loss_{name}.png")
 
+    def _compute_dynamic_pruning_indices(self, module, scores, max_increase_percent):
+        with torch.no_grad():
+            # Compute activations of current module
+
+            data, target = next(iter(self.data_loader))
+            data, target = data.to(self.device), target.to(self.device)
+            activations, _, __ = self._run_forward(
+                data, return_intermediate_output_module=module
+            )
+            _, full_accuracy, full_loss = self._run_forward(
+                x=activations,
+                y_true=target,
+                process_as_intermediate_output_module=module,
+            )
+            all_indices = np.argsort(scores)
+            indices = []
+            loss_history = []
+            score_history = []
+            new_loss = full_loss
+            k = None
+            for i in all_indices:
+
+                _, new_accuracy, new_loss = self._run_forward(
+                    x=activations.index_fill(
+                        1, torch.tensor(np.array(indices + [i])).long().to(self.device), 0.0
+                    ),
+                    y_true=target,
+                    process_as_intermediate_output_module=module,
+                )
+                if 100* (new_loss - full_loss) / full_loss <= max_increase_percent:
+                    indices.append(i)
+                    loss_history.append(new_loss.detach().cpu().numpy().item())
+                    score_history.append(scores[i])
+                else:
+                    # Normally would break here, but we want the full statistic to plot it
+                    if k is None:
+                        k = len(indices)
+
+            # Statistics
+            log_dict(f"{self.experiment_id}", {
+                "ranking_method": self._ranking_method,
+                "layer": self._module_name(module),
+                "max_loss_increase" : self._max_loss_increase,
+                "epoch": self._epoch,
+                "full_loss": full_loss.detach().cpu().numpy().item(),
+                "loss_history": json.dumps(loss_history),
+                "indices": json.dumps(np.array(indices).tolist()),
+                "scores": json.dumps(np.array(score_history).tolist()),
+                "k": k
+            })
+
+            return indices[:k], new_loss - full_loss
+
     def _fast_estimate_sv_for_module(self, module, sv_samples=5):
         # Estimate Shapley Values of module's output nodes
         n = module.weight.shape[0]
@@ -302,8 +389,8 @@ class ContinuousPruner:
             count = np.ones((n,)) * 0.0001
 
             for j in range(sv_samples):
-                if self.verbose > 0:
-                    print(f"SV - Iteration {j}")
+                # if self.verbose > 0:
+                #     print(f"SV - Iteration {j}")
                 _activation = activations.clone().detach()
                 _, accuracy, loss = self._run_forward(
                     x=_activation,
@@ -339,6 +426,7 @@ class ContinuousPruner:
             prune_direction is "in" or prune_direction is "out"
         ), "prune_direction must be in or out"
         if len(indices) == 0:
+            print (f"WARN: prune module called with no indices on {module}")
             return  # nothing to prune
 
         # Determine which axis needs to be pruned on 'weight' and on 'bias'
@@ -375,7 +463,9 @@ class ContinuousPruner:
                     requires_grad=True,
                 )
                 new_id = id(module.weight)
-                self._update_optimizer(old_id, new_id, prune_axis_weight, keep_indices, module.weight)
+                self._update_optimizer(
+                    old_id, new_id, prune_axis_weight, keep_indices, module.weight
+                )
 
         if prune_axis_bias is not None:
             old_id = id(module.bias)
@@ -387,23 +477,25 @@ class ContinuousPruner:
                     requires_grad=True,
                 )
                 new_id = id(module.bias)
-                self._update_optimizer(old_id, new_id, prune_axis_bias, keep_indices, module.bias)
+                self._update_optimizer(
+                    old_id, new_id, prune_axis_bias, keep_indices, module.bias
+                )
 
     def _update_optimizer(self, old_id, new_id, prune_axis, keep_indices, new_weight):
-        momentum = self.opt_state_dict["state"][old_id]["momentum_buffer"]
-        momentum = momentum.index_select(
-            prune_axis, torch.tensor(keep_indices).to(self.device)
-        )
-        assert momentum.shape == new_weight.shape
-        assert new_id == id(new_weight)
-        del self.opt_state_dict["state"][old_id]
-        self.opt_state_dict["state"][new_id] = {
-                'momentum_buffer': momentum,
-        }
-        self.opt_state_dict['param_groups'][0]['params'].remove(old_id)
-        self.opt_state_dict['param_groups'][0]['params'].append(new_id)
-        for p in self.opt_state_dict["state"]:
-            print ( self.opt_state_dict["state"][p]["momentum_buffer"].shape)
+        if old_id in self.opt_state_dict["state"]:
+            momentum = self.opt_state_dict["state"][old_id]["momentum_buffer"]
+            momentum = momentum.index_select(
+                prune_axis, torch.tensor(keep_indices).to(self.device)
+            )
+            assert momentum.shape == new_weight.shape
+            assert new_id == id(new_weight)
+            del self.opt_state_dict["state"][old_id]
+            self.opt_state_dict["state"][new_id] = {
+                "momentum_buffer": momentum,
+            }
+            self.opt_state_dict["param_groups"][0]["params"].remove(old_id)
+            self.opt_state_dict["param_groups"][0]["params"].append(new_id)
+
 
     def _register_hooks(self):
         for name, module in self.model.named_modules():
@@ -415,21 +507,23 @@ class ContinuousPruner:
 
     def _forward_hook(self, module, input, output):
         if not self.performing_pruning:
+            module_name = self._module_name(module)
             output_np = output.cpu().detach().clone().numpy()
-            if module not in self.activation_counts:
-                self.activation_counts[module] = np.zeros(output[0].shape, "int")
-            self.activation_counts[module] += (output_np > 0).sum(0)
+            if module_name not in self.activation_counts:
+                self.activation_counts[module_name] = np.zeros(output[0].shape, "int")
+            self.activation_counts[module_name] += (output_np > 0).sum(0)
 
     def _backward_hook(self, module, grad_input, grad_output):
         if not self.performing_pruning:
+            module_name = self._module_name(module)
             grad_output = grad_output[0]
-            if module not in self.activation_cum_grad:
-                self.activation_cum_grad[module] = np.zeros(
+            if module_name not in self.activation_cum_grad:
+                self.activation_cum_grad[module_name] = np.zeros(
                     grad_output[0].shape, "float"
                 )
 
             grad = grad_output.cpu().detach().clone().numpy()
-            self.activation_cum_grad[module] += grad.sum(0)
+            self.activation_cum_grad[module_name] += grad.sum(0)
 
     def _zero_gradients(self):
         model_parameters = filter(lambda p: p.requires_grad, self.model.parameters())

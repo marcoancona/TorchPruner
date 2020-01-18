@@ -5,16 +5,26 @@ import torch
 from shapley_pruning.prunable import ContinuousPruner
 from torchsummary import summary, torchsummary
 
-from experiments.utils import now, log, get_parameter_count, get_layer_sizes
+from experiments.utils import (
+    now,
+    log,
+    get_parameter_count,
+    get_layer_sizes,
+    save_model_state,
+    load_model_state,
+)
 import experiments.models.fmnist as fmnist
+import experiments.models.cifar10 as cifar10
 
 
-experiments = {"fmnist": fmnist}
+experiments = {"fmnist": fmnist, "cifar10": cifar10}
 
 # Training settings
 parser = argparse.ArgumentParser()
 
 parser.add_argument("--experiment", type=str)
+parser.add_argument("--load", type=str)
+parser.add_argument("--save", action="store_true", default=False)
 
 parser.add_argument(
     "--epochs",
@@ -38,18 +48,25 @@ parser.add_argument(
 )
 
 parser.add_argument("--sparsity", help="0 = dynamic", type=float, default=1.0)
+parser.add_argument(
+    "--max-loss-gap", help="Max increment of loss at each pruning iteration", type=float
+)
 parser.add_argument("--pruning-steps", type=int, default=0)
+parser.add_argument("--pruning-start", type=int, default=1)
+parser.add_argument("--pruning-interval", type=int, default=1)
 parser.add_argument("--pruning-logic", type=str)
 
 args = parser.parse_args()
+print(args)
 experiment = experiments[args.experiment]
 if experiments is None:
     raise RuntimeError(f"--model not valid, must be in {list(experiments.keys())}")
 assert args.sparsity >= 0, "--sparsity must be > 0 (or 0 for dynamic sparsity)"
 
-experiment_id = (
-    f"{args.experiment}_{args.pruning_logic}_{args.sparsity}_{args.pruning_steps}steps"
-)
+sparsity = f"s:{args.sparsity}" if args.sparsity > 0 else f"gap:{args.max_loss_gap}"
+experiment_id = f"{args.experiment}__{args.pruning_logic}_{sparsity}_steps:{args.pruning_steps}_start:{args.pruning_start}_int:{args.pruning_interval}"
+if args.load is not None:
+    experiment_id += f"_load:{args.load}"
 timestamp_id = now()
 
 
@@ -119,7 +136,12 @@ def main():
     # torch.manual_seed(args.seed)
     device = torch.device("cuda" if use_cuda else "cpu")
 
-    dataset, train_loader, validation_loader, test_loader = experiment.get_dataset_and_loaders(use_cuda)
+    (
+        dataset,
+        train_loader,
+        validation_loader,
+        test_loader,
+    ) = experiment.get_dataset_and_loaders(use_cuda)
 
     # Print dataset info and infer input size
     batch, _ = next(iter(test_loader))
@@ -129,10 +151,7 @@ def main():
     # Get model
     model, model_name = experiment.get_model_with_name()
     model = model.to(device)
-
     summary(model, input_size=input_size, device="cuda" if use_cuda else "cpu")
-    optimizer = experiment.get_optimizer_for_model(model)
-    initial_parameters = get_parameter_count(model)
 
     pruner = ContinuousPruner(
         model,
@@ -143,18 +162,37 @@ def main():
         test_data_loader=test_loader,  # for debugging and plotting only
         loss=experiment.loss,
         verbose=1,
+        experiment_id=experiment_id
     )
 
+    if args.load is not None:
+        load_model_state(model, model_name, args.load, pruner=pruner)
+
+    optimizer = experiment.get_optimizer_for_model(model, 0)
+    initial_parameters = get_parameter_count(model)
 
     sparsity = args.sparsity
     pruning_steps = args.pruning_steps
+    pruning_start = args.pruning_start
+    pruning_interval = args.pruning_interval
+    max_increment_loss = args.max_loss_gap
 
-    if pruning_steps == 0 and 0 < sparsity < 1.0:
+    if pruning_start == 0 and 0 < sparsity < 1.0:
         # Pruning before training if steps == 0
         # Effectively, this means training a smaller network from scratch
-        opt_state = pruner.prune(sparsity, args.pruning_logic, optimizer)
-        optimizer = experiment.get_optimizer_for_model(model)
+        opt_state = pruner.prune(
+            sparsity,
+            args.pruning_logic,
+            optimizer,
+            max_loss_increase_percent=max_increment_loss,
+            epoch=0
+        )
+        optimizer = experiment.get_optimizer_for_model(model, 0)
         optimizer.load_state_dict(opt_state)
+
+    best_model_state = None
+    best_pruner_state = None
+    best_test_loss = None
 
     for epoch in range(1, args.epochs + 1):
 
@@ -168,22 +206,36 @@ def main():
         # Compute test accuracy
         test_loss, test_acc = test(args, model, device, test_loader)
 
-        # scheduler.step()
+        if best_model_state is None or test_loss < best_test_loss:
+            best_test_loss = test_loss
+            best_pruner_state = pruner.state_dict()
+            best_model_state = model.state_dict()
+
+        # Get n params before pruning
+        # Otherwise test loss does not match the network
+        n_params = get_parameter_count(model)
+        layer_size = get_layer_sizes(model)
 
         # Prune and rebuild optimizer
         start = timer()
         prune_time = 0.0
 
-        if 1 <= epoch <= pruning_steps and sparsity < 1.0:
-            opt_state = pruner.prune(
-                pow(sparsity, 1 / pruning_steps),
-                args.pruning_logic,
-                optimizer
-            )
-            optimizer = experiment.get_optimizer_for_model(model)
-            optimizer.load_state_dict(opt_state)
-            prune_time = timer() - start
-            test(args, model, device, test_loader)
+        if (
+            pruning_start <= epoch < pruning_start + pruning_steps * pruning_interval
+            and sparsity < 1.0
+        ):
+            if (epoch - 1) % pruning_interval == 0:
+                opt_state = pruner.prune(
+                    pow(sparsity, 1 / pruning_steps),
+                    args.pruning_logic,
+                    optimizer,
+                    max_loss_increase_percent=max_increment_loss,
+                    epoch=epoch
+                )
+                optimizer = experiment.get_optimizer_for_model(model, epoch)
+                optimizer.load_state_dict(opt_state)
+                prune_time = timer() - start
+                test(args, model, device, test_loader)
 
         log(
             experiment_id,
@@ -193,11 +245,17 @@ def main():
             test_acc,
             train_loss,
             test_loss,
-            get_parameter_count(model),
+            n_params,
             initial_parameters,
-            get_layer_sizes(model),
+            layer_size,
             train_time,
             prune_time,
+        )
+
+    # Save best model
+    if args.save is True:
+        save_model_state(
+            best_model_state, model_name, timestamp_id, pruner_state=best_pruner_state
         )
 
 

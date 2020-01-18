@@ -131,3 +131,7 @@ dmypy.json
 data/
 
 \.idea/
+
+*.pt
+
+*.pruner
