@@ -32,10 +32,7 @@ def attributions_for_module(self, module, method):
     data, target = data.to(self.device), target.to(self.device)
 
     # Compute accuracy with no players
-    _, _, loss = self._run_forward(
-        x=data,
-        y_true=target,
-    )
+    _, _, loss = self._run_forward(x=data, y_true=target,)
     loss.backward()
 
     h1.remove()
@@ -68,6 +65,7 @@ def _sum_absolute_weights(module):
         w = w.sum(-1)
     return w
 
+
 def _fast_estimate_sv_for_module(self, module, sv_samples=5):
     # Estimate Shapley Values of module's output nodes
     n = module.weight.shape[0]
@@ -83,9 +81,7 @@ def _fast_estimate_sv_for_module(self, module, sv_samples=5):
 
         # Compute accuracy with no players
         _, full_accuracy, full_loss = self._run_forward(
-            x=activations,
-            y_true=target,
-            process_as_intermediate_output_module=module,
+            x=activations, y_true=target, process_as_intermediate_output_module=module,
         )
         _, no_player_accuracy, no_player_loss = self._run_forward(
             x=torch.zeros_like(activations),

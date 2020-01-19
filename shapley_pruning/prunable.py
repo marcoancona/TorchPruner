@@ -8,18 +8,19 @@ import matplotlib.pyplot as plt
 from experiments.utils import log_dict
 from shapley_pruning.attributions import attributions_for_module
 
+
 class ContinuousPruner:
     def __init__(
-            self,
-            model,
-            input_size,
-            pruning_graph,
-            device,
-            data_loader,
-            test_data_loader,
-            loss,
-            verbose=0,
-            experiment_id="experiment"
+        self,
+        model,
+        input_size,
+        pruning_graph,
+        device,
+        data_loader,
+        test_data_loader,
+        loss,
+        verbose=0,
+        experiment_id="experiment",
     ):
         self.model = model
         # self.prevent_pruning = prevent_pruning if prevent_pruning is not None else []
@@ -47,28 +48,15 @@ class ContinuousPruner:
         self._epoch = 0
 
         self._run_forward()
-        # self._register_hooks()
-
-    # def state_dict(self):
-    #     return {
-    #         "activation_counts": self.activation_counts,
-    #         "activation_cum_grad": self.activation_cum_grad,
-    #         "activation_cum_taylor": self.activation_cum_taylor
-    #     }
-    #
-    # def load_state_dict(self, state):
-    #     self.activation_cum_grad = state["activation_cum_grad"]
-    #     self.activation_cum_taylor = state["activation_cum_taylor"]
-    #     self.activation_counts = state["activation_counts"]
 
     def prune(
-            self,
-            sparsity_ratio,
-            ranking_method,
-            optimizer,
-            max_loss_increase_percent=None,
-            epoch=0,
-            prune_all_layers=False
+        self,
+        sparsity_ratio,
+        ranking_method,
+        optimizer,
+        max_loss_increase_percent=None,
+        epoch=0,
+        prune_all_layers=False,
     ):
         """
         Remove a given percentage of nodes from the network.
@@ -95,7 +83,7 @@ class ContinuousPruner:
             to_prune = self.pruning_graph
         else:
             current_module_idx = max(0, (epoch - 1)) % len(self.pruning_graph)
-            to_prune = self.pruning_graph[current_module_idx:current_module_idx + 1]
+            to_prune = self.pruning_graph[current_module_idx : current_module_idx + 1]
 
         for module, cascading_modules in to_prune:
 
@@ -125,8 +113,10 @@ class ContinuousPruner:
                 self._prune_module(next_module, indices_list)
 
             # Then proceed with pruning of the current module
-            self._prune_module(module,
-                               [('weight', 0, indices_to_remove), ('bias', 0, indices_to_remove)])
+            self._prune_module(
+                module,
+                [("weight", 0, indices_to_remove), ("bias", 0, indices_to_remove)],
+            )
 
             if self.verbose > 0:
                 summary(self.model, input_size=self.input_size, device=self.device.type)
@@ -159,32 +149,22 @@ class ContinuousPruner:
         return None
 
     def _get_pruning_indices(
-            self, module, ranking_method, pruning_ratio, max_loss_increase_percent
+        self, module, ranking_method, pruning_ratio, max_loss_increase_percent
     ):
         scores, indices = None, None
 
         if ranking_method.startswith("random"):
-            # scores = np.random.random(module.weight.shape[0])
             scores = attributions_for_module(self, module, "random")
         elif ranking_method.startswith("grad"):
             scores = attributions_for_module(self, module, "grad")
-            # scores = self.activation_cum_grad[self._module_name(module)]
         elif ranking_method.startswith("weight"):
             scores = attributions_for_module(self, module, "weight")
-
-            # scores = self._sum_absolute_weights(module)
         elif ranking_method.startswith("taylor"):
             scores = attributions_for_module(self, module, "taylor")
-
-            # scores = self.activation_cum_taylor[self._module_name(module)]
         elif ranking_method.startswith("count"):
             scores = attributions_for_module(self, module, "count")
-
-            # scores = self.activation_counts[self._module_name(module)]
         elif ranking_method.startswith("sv"):
             scores = attributions_for_module(self, module, "sv")
-
-            # scores = self._fast_estimate_sv_for_module(module)
 
         if scores is None:
             raise RuntimeError("ranking_method not valid")
@@ -203,34 +183,29 @@ class ContinuousPruner:
             indices = np.argsort(scores)[:k]
         else:
             # Dynamic pruning (how many to remove is based on max_loss_increase_percent)
-            indices, loss_increment = self._compute_dynamic_pruning_indices(module, scores, max_loss_increase_percent)
-            # if "zeros" in ranking_method:
-            #     indices = np.argwhere(np.abs(scores) < 0.001).flatten()
-            # elif "nonpositive" in ranking_method:
-            #     indices = np.argwhere(scores <= 0.0).flatten()
-            # else:
-            #     raise RuntimeError("Criteria for dynamic pruning not understood")
+            indices, loss_increment = self._compute_dynamic_pruning_indices(
+                module, scores, max_loss_increase_percent
+            )
 
         if self.verbose > 0:
             print(f"Sum of scores of removed indices: {scores[indices].sum()}")
         return indices
 
     def _run_forward(
-            self,
-            x=None,
-            y_true=None,
-            return_intermediate_output_module=None,
-            process_as_intermediate_output_module=None,
-            linearize=False,
+        self,
+        x=None,
+        y_true=None,
+        return_intermediate_output_module=None,
+        process_as_intermediate_output_module=None,
+        linearize=False,
     ):
         acc, loss = None, None
         if x is None:
             x = (
                 torch.tensor(10 * np.random.random((50,) + self.input_size))
-                    .float()
-                    .to(self.device)
+                .float()
+                .to(self.device)
             )
-        # print(x.shape)
         y = self.model(
             x,
             return_intermediate_output_module=return_intermediate_output_module,
@@ -243,7 +218,9 @@ class ContinuousPruner:
             acc = y_pred.eq(y_true.view_as(y_pred)).sum().item() / y_true.shape[0]
         return y, acc, loss
 
-    def _get_indices_mapping_for_pruning_fixed(self, module, next_module, pruning_indices):
+    def _get_indices_mapping_for_pruning_fixed(
+        self, module, next_module, pruning_indices
+    ):
         if len(pruning_indices) == 0:
             return np.array([])
 
@@ -274,26 +251,32 @@ class ContinuousPruner:
             module.weight.requires_grad = True
             return activations
 
-        default = [('weight', 1, pruning_indices)]
+        default = [("weight", 1, pruning_indices)]
 
         if isinstance(module, nn.Conv2d):
             conv_activations = _get_masked_output(module, pruning_indices)
             lin_activations = torch.flatten(conv_activations, 1).sum(0)
-            mask_indices = np.argwhere(np.isnan(lin_activations.clone().detach().cpu().numpy())).flatten()
+            mask_indices = np.argwhere(
+                np.isnan(lin_activations.clone().detach().cpu().numpy())
+            ).flatten()
             if isinstance(next_module, nn.Linear):
-                return [('weight', 1, mask_indices)]
+                return [("weight", 1, mask_indices)]
             elif isinstance(next_module, nn.BatchNorm2d):
-                return [('weight', 0, mask_indices),
-                        ('bias', 0, mask_indices),
-                        ('running_mean', 0, mask_indices),
-                        ('running_std', 0, mask_indices)]
+                return [
+                    ("weight", 0, mask_indices),
+                    ("bias", 0, mask_indices),
+                    ("running_mean", 0, mask_indices),
+                    ("running_std", 0, mask_indices),
+                ]
 
         elif isinstance(module, nn.Linear):
             if isinstance(next_module, nn.BatchNorm1d):
-                return [('weight', 0, pruning_indices),
-                        ('bias', 0, pruning_indices),
-                        ('running_mean', 0, pruning_indices),
-                        ('running_std', 0, pruning_indices)]
+                return [
+                    ("weight", 0, pruning_indices),
+                    ("bias", 0, pruning_indices),
+                    ("running_mean", 0, pruning_indices),
+                    ("running_std", 0, pruning_indices),
+                ]
 
         return default
 
@@ -353,54 +336,15 @@ class ContinuousPruner:
         module.weight.data = original_weights
         module.weight.requires_grad = True
         if isinstance(next_module, nn.Linear) or isinstance(next_module, nn.Conv2d):
-            return [('weight', 1, indices)]
+            return [("weight", 1, indices)]
         else:
             # BatchNorm2D/1D
             return [
-                ('weight', 0, indices),
-                ('bias', 0, indices),
-                ('running_mean', 0, indices),
-                ('running_var', 0, indices),
+                ("weight", 0, indices),
+                ("bias", 0, indices),
+                ("running_mean", 0, indices),
+                ("running_var", 0, indices),
             ]
-
-    # def _test_loss_splot(self, module, rankings_with_name):
-    #     loaders = [(self.data_loader, "train"), (self.test_data_load, "test")]
-    #     with torch.no_grad():
-    #         for loader, name in loaders:
-    #             data, target = next(iter(loader))
-    #             data, target = data.to(self.device), target.to(self.device)
-    #
-    #             # Compute activations of current module
-    #             activations, _, __ = self._run_forward(
-    #                 data, return_intermediate_output_module=module
-    #             )
-    #
-    #             # Compute accuracy with no players
-    #             _, full_accuracy, full_loss = self._run_forward(
-    #                 x=activations,
-    #                 y_true=target,
-    #                 process_as_intermediate_output_module=module,
-    #             )
-    #
-    #             plt.figure()
-    #             for rank, rank_name in rankings_with_name:
-    #                 loss = [full_loss]
-    #                 _activation = activations.clone().detach()
-    #                 for i in rank:
-    #                     _activation = _activation.index_fill_(
-    #                         1, torch.tensor(np.array([i])).long().to(self.device), 0.0
-    #                     )
-    #                     loss.append(
-    #                         self._run_forward(
-    #                             x=_activation,
-    #                             y_true=target,
-    #                             process_as_intermediate_output_module=module,
-    #                         )[2]
-    #                     )
-    #
-    #                 plt.plot(range(len(loss)), np.array(loss), label=rank_name)
-    #             plt.legend()
-    #             plt.savefig(f"{str(module)}_loss_{name}.png")
 
     def _compute_dynamic_pruning_indices(self, module, scores, max_increase_percent):
         with torch.no_grad():
@@ -426,7 +370,9 @@ class ContinuousPruner:
 
                 _, new_accuracy, new_loss = self._run_forward(
                     x=activations.index_fill(
-                        1, torch.tensor(np.array(indices + [i])).long().to(self.device), 0.0
+                        1,
+                        torch.tensor(np.array(indices + [i])).long().to(self.device),
+                        0.0,
                     ),
                     y_true=target,
                     process_as_intermediate_output_module=module,
@@ -434,7 +380,6 @@ class ContinuousPruner:
                 indices.append(i)
                 loss_history.append(new_loss.detach().cpu().numpy().item())
                 score_history.append(scores[i])
-
 
                 if 100 * (new_loss - full_loss) / full_loss <= max_increase_percent:
                     continue
@@ -444,90 +389,24 @@ class ContinuousPruner:
                         k = len(indices)
 
             # Statistics
-            log_dict(f"{self.experiment_id}", {
-                "ranking_method": self._ranking_method,
-                "layer": self._module_name(module),
-                "max_loss_increase": self._max_loss_increase,
-                "epoch": self._epoch,
-                "full_loss": full_loss.detach().cpu().numpy().item(),
-                "loss_history": json.dumps(loss_history),
-                "indices": json.dumps(np.array(indices).tolist()),
-                "scores": json.dumps(np.array(score_history).tolist()),
-                "k": k
-            })
+            log_dict(
+                f"{self.experiment_id}",
+                {
+                    "ranking_method": self._ranking_method,
+                    "layer": self._module_name(module),
+                    "max_loss_increase": self._max_loss_increase,
+                    "epoch": self._epoch,
+                    "full_loss": full_loss.detach().cpu().numpy().item(),
+                    "loss_history": json.dumps(loss_history),
+                    "indices": json.dumps(np.array(indices).tolist()),
+                    "scores": json.dumps(np.array(score_history).tolist()),
+                    "k": k,
+                },
+            )
 
             return indices[:k], new_loss - full_loss
 
-    # def _sum_absolute_weights(self, module):
-    #     w = module.weight.detach().cpu().numpy()
-    #     w = np.abs(w)
-    #     while len(w.shape) > 1:
-    #         w = w.sum(-1)
-    #     return w
-
-    # def _fast_estimate_sv_for_module(self, module, sv_samples=5):
-    #     # Estimate Shapley Values of module's output nodes
-    #     n = module.weight.shape[0]
-    #
-    #     with torch.no_grad():
-    #         data, target = next(iter(self.data_loader))
-    #         data, target = data.to(self.device), target.to(self.device)
-    #
-    #         # Compute activations of current module
-    #         activations, _, __ = self._run_forward(
-    #             data, return_intermediate_output_module=module
-    #         )
-    #
-    #         # Compute accuracy with no players
-    #         _, full_accuracy, full_loss = self._run_forward(
-    #             x=activations,
-    #             y_true=target,
-    #             process_as_intermediate_output_module=module,
-    #         )
-    #         _, no_player_accuracy, no_player_loss = self._run_forward(
-    #             x=torch.zeros_like(activations),
-    #             y_true=target,
-    #             process_as_intermediate_output_module=module,
-    #         )
-    #
-    #         # Start SV sampling
-    #         sv = np.zeros((n,))
-    #         count = np.ones((n,)) * 0.0001
-    #
-    #         for j in range(sv_samples):
-    #             # if self.verbose > 0:
-    #             #     print(f"SV - Iteration {j}")
-    #             _activation = activations.clone().detach()
-    #             _, accuracy, loss = self._run_forward(
-    #                 x=_activation,
-    #                 y_true=target,
-    #                 process_as_intermediate_output_module=module,
-    #             )
-    #             for i in np.random.permutation(n):  # [:min(n, 1000)]:
-    #                 _activation = _activation.index_fill_(
-    #                     1, torch.tensor(np.array([i])).long().to(self.device), 0.0
-    #                 )
-    #                 _, new_accuracy, new_loss = self._run_forward(
-    #                     x=_activation,
-    #                     y_true=target,
-    #                     process_as_intermediate_output_module=module,
-    #                 )
-    #                 sv[i] += loss - new_loss
-    #                 count[i] += 1
-    #                 loss = new_loss
-    #                 accuracy = new_accuracy
-    #         sv /= count
-    #         sv *= -1
-    #
-    #         if self.verbose > 0:
-    #             print(f"Estimating Shapley Values for {n} players in {module}")
-    #             print(f"Shapley Values sum to {sv.sum()}")
-    #             print(f"This should match the loss gap {no_player_loss - full_loss}")
-    #
-    #         return sv
-
     def _prune_module(self, module, indices_list):
-
         for param_name, axis, indices in indices_list:
             if hasattr(module, param_name):
                 param = module.__getattr__(param_name)
@@ -544,12 +423,16 @@ class ContinuousPruner:
 
                     old_id = id(param)
                     with torch.no_grad():
-                        setattr(module, param_name, nn.Parameter(
-                            param.index_select(
-                                axis, torch.tensor(keep_indices).to(self.device)
+                        setattr(
+                            module,
+                            param_name,
+                            nn.Parameter(
+                                param.index_select(
+                                    axis, torch.tensor(keep_indices).to(self.device)
+                                ),
+                                requires_grad=param.requires_grad,
                             ),
-                            requires_grad=param.requires_grad,
-                        ))
+                        )
                         param = module.__getattr__(param_name)
                         new_id = id(param)
                         self._update_optimizer(
@@ -570,42 +453,6 @@ class ContinuousPruner:
             }
             self.opt_state_dict["param_groups"][0]["params"].remove(old_id)
             self.opt_state_dict["param_groups"][0]["params"].append(new_id)
-
-    # def _register_hooks(self):
-    #     for name, module in self.model.named_modules():
-    #         if hasattr(module, "weight"):
-    #             # self.prunable_layers.append(module)
-    #             module.register_forward_hook(self._forward_hook)
-    #             module.register_backward_hook(self._backward_hook)
-    #     # print ("ContinuousPruner found the following prunable layers: ", self.prunable_layers)
-    #
-    # def _forward_hook(self, module, input, output):
-    #     if not self.performing_pruning:
-    #         module_name = self._module_name(module)
-    #         output_np = output  #.cpu().detach().clone().numpy()
-    #         if module_name not in self.activation_counts:
-    #             self.activation_counts[module_name] = torch.zeros(output[0].shape).to(self.device)
-    #         if module_name not in self.activations:
-    #             self.activations[module_name] = torch.zeros(output[0].shape).to(self.device)
-    #         self.activation_counts[module_name] += (output_np > 0).sum(0)
-    #         self.activations[module_name] = output_np
-    #
-    # def _backward_hook(self, module, grad_input, grad_output):
-    #     if not self.performing_pruning:
-    #         module_name = self._module_name(module)
-    #         grad_output = grad_output[0]
-    #         if module_name not in self.activation_cum_grad:
-    #             self.activation_cum_grad[module_name] = torch.zeros(
-    #                 grad_output[0].shape
-    #             ).to(self.device)
-    #         if module_name not in self.activation_cum_taylor:
-    #             self.activation_cum_taylor[module_name] = torch.zeros(
-    #                 grad_output[0].shape
-    #             ).to(self.device)
-    #
-    #         grad = grad_output #.cpu().detach().clone().numpy()
-    #         self.activation_cum_grad[module_name] += grad.abs().sum(0)
-    #         self.activation_cum_taylor[module_name] += (grad * self.activations[module_name]).abs().sum(0)
 
     def _zero_gradients(self):
         model_parameters = filter(lambda p: p.requires_grad, self.model.parameters())

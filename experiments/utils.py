@@ -15,14 +15,14 @@ def now():
 
 
 def _save_pruner_state(state, path):
-    with open(path, 'wb') as handle:
+    with open(path, "wb") as handle:
         pickle.dump(state, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
 def _load_pruner_state(path):
-    with open(f"{path}", 'rb') as handle:
+    with open(f"{path}", "rb") as handle:
         state = pickle.load(handle)
-        print (state)
+        print(state)
     return state
 
 
@@ -32,18 +32,14 @@ def save_model_state(state, model_name, timestamp):
     torch.save(state, f"{current_dir}/weights/{model_name}_{timestamp}.pt")
     # Saving also without timestamp suffix makes it easier to just load the "last"
     torch.save(state, f"{current_dir}/weights/{model_name}.pt")
-    # if pruner_state is not None:
-    #     _save_pruner_state(pruner_state, f"{current_dir}/weights/{model_name}_{timestamp}.pruner")
-    #     _save_pruner_state(pruner_state, f"{current_dir}/weights/{model_name}.pruner")
 
 
 def load_model_state(model, model_name, timestamp):
-    print (f"Loading {model_name}_{timestamp}")
+    print(f"Loading {model_name}_{timestamp}")
     load_path = model_name
     if isinstance(timestamp, str) and len(timestamp) > 0 and timestamp != "last":
         load_path += f"_{timestamp}"
     model.load_state_dict(torch.load(f"{current_dir}/weights/{load_path}.pt"))
-    # pruner.load_state_dict(_load_pruner_state(f"{current_dir}/weights/{load_path}.pruner"))
 
 
 def log_dict(filename, dict):
@@ -53,61 +49,6 @@ def log_dict(filename, dict):
         if csvfile.tell() == 0:
             writer.writeheader()
         writer.writerow(dict)
-
-
-# def log(
-#     experiment_name,
-#     timestamp_id,
-#     epoch,
-#     train_acc,
-#     test_acc,
-#     test_acc_pp,
-#     train_loss,
-#     test_loss,
-#     test_loss_pp,
-#     n_params,
-#     flops,
-#     n_params_full,
-#     activations,
-#     train_time,
-#     prune_time,
-# ):
-#     with open(f"{current_dir}/results/log.csv", "a", newline="") as csvfile:
-#         fieldnames = [
-#             "timestamp",
-#             "epoch",
-#             "train_acc",
-#             "test_acc",
-#             "train_loss",
-#             "test_loss",
-#             "n_params",
-#             "flops",
-#             "n_params_full",
-#             "activations",
-#             "train_time",
-#             "prune_time",
-#             "experiment",
-#         ]
-#         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-#         if csvfile.tell() == 0:
-#             writer.writeheader()
-#         writer.writerow(
-#             {
-#                 "timestamp": timestamp_id,
-#                 "epoch": epoch,
-#                 "train_acc": train_acc,
-#                 "test_acc": test_acc,
-#                 "train_loss": train_loss,
-#                 "test_loss": test_loss,
-#                 "n_params": n_params,
-#                 "flops": flops,
-#                 "n_params_full": n_params_full,
-#                 "activations": activations,
-#                 "train_time": train_time,
-#                 "prune_time": prune_time,
-#                 "experiment": experiment_name,
-#             }
-#         )
 
 
 def get_layer_sizes(model):
@@ -121,10 +62,6 @@ def get_parameter_count_and_flops(model, input_size, device):
     # Notice that, because of BathNorm, the sample dim must be >= 2
     x = torch.randn((2,) + tuple(input_size))
     x = x.to(device)
-    print (x.shape)
+    print(x.shape)
     macs, params = profile(model, inputs=(x,))
-    return 2*macs, params
-
-    # model_parameters = filter(lambda p: p.requires_grad, model.parameters())
-    # return sum([np.prod(p.size()) for p in model_parameters])
-
+    return 2 * macs, params
