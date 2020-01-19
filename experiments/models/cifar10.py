@@ -94,10 +94,17 @@ def loss(output, target):
     return F.cross_entropy(output, target)
 
 
-def get_optimizer_for_model(model, epoch):
+def get_optimizer_for_model(model, epoch, prev_state=None):
     lr = 0.05 * (0.5 ** (epoch // 30))
     print('Learning rate: ', lr)
-    return optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
+    opt = optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
+    if prev_state is not None:
+        opt.load_state_dict(prev_state)
+        # Set again new lr, because it was replaced by load_state_dict
+        for param_group in opt.param_groups:
+            param_group['lr'] = lr
+    return opt
+
 
 
 def get_dataset_and_loaders(use_cuda=torch.cuda.is_available()):
@@ -166,6 +173,8 @@ def test():
     print (params)
 
     opt = get_optimizer_for_model(model, 0)
+
+    state = opt.state_dict()
     pg = model.get_pruning_graph()
     pruner = ContinuousPruner(model, (3, 32, 32), pg, 'cpu', validation_loader, test_loader, loss, verbose=1)
     pruner.prune(0.5, prune_all_layers=True, optimizer=opt, ranking_method='random')

@@ -191,7 +191,7 @@ def main():
             epoch=0,
         )
         optimizer = experiment.get_optimizer_for_model(model, 0)
-        optimizer.load_state_dict(opt_state)
+
 
     best_model_state = None
     # best_pruner_state = None
@@ -238,10 +238,13 @@ def main():
                     max_loss_increase_percent=max_increment_loss,
                     epoch=epoch,
                 )
-                optimizer = experiment.get_optimizer_for_model(model, epoch)
-                optimizer.load_state_dict(opt_state)
+                optimizer = experiment.get_optimizer_for_model(model, epoch, opt_state)
                 prune_time = timer() - start
                 test_loss_pp, test_acc_pp = test(args, model, device, test_loader)
+        else:
+            # Recreate optimizer anyway, because we need to adjust learning rate based on epoch
+            opt_state = optimizer.state_dict()
+            optimizer = experiment.get_optimizer_for_model(model, epoch, opt_state)
 
         log_dict(
             "log",

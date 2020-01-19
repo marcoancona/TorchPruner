@@ -71,11 +71,15 @@ def loss(output, target, reduction = "mean"):
     return F.nll_loss(F.log_softmax(output, dim=1), target, reduction=reduction)
 
 
-def get_optimizer_for_model(model, _):
-    learning_rate = 0.015
-    moment = 0.9
-    return optim.SGD(model.parameters(), lr=learning_rate, momentum=moment, nesterov=True)
-
+def get_optimizer_for_model(model, epoch, prev_state=None):
+    lr = 0.01 * (0.5 ** (epoch // 25))
+    opt = optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
+    if prev_state is not None:
+        opt.load_state_dict(prev_state)
+        # Set again new lr, because it was replaced by load_state_dict
+        for param_group in opt.param_groups:
+            param_group['lr'] = lr
+    return opt
 
 def get_dataset_and_loaders(use_cuda=torch.cuda.is_available()):
 
