@@ -78,7 +78,6 @@ def train(args, model, device, train_loader, optimizer, epoch):
     start = timer()
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
-        optimizer.zero_grad()
 
         output = model(data)
         loss = experiment.loss(output, target)
@@ -89,6 +88,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
         samples += len(target)
 
         # Perform optimization step
+        optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 

@@ -20,7 +20,6 @@ def attributions_for_module(self, module, method):
     elif method == "random":
         return np.random.random((n,))
 
-    activations = torch.zeros((n,)).to(self.device)
     activations_count = torch.zeros((n,)).to(self.device)
     gradients = torch.zeros((n,)).to(self.device)
     gradients_x_input = torch.zeros((n,)).to(self.device)
@@ -31,7 +30,6 @@ def attributions_for_module(self, module, method):
     data, target = next(iter(self.data_loader))
     data, target = data.to(self.device), target.to(self.device)
 
-    # Compute accuracy with no players
     _, _, loss = self._run_forward(x=data, y_true=target,)
     loss.backward()
 
@@ -48,14 +46,24 @@ def attributions_for_module(self, module, method):
 
 def _forward_hook(module, input, output):
     global activations, activations_count
-    activations_count += (output > 0).sum(0).float()
     activations = output
+    _output = (output > 0).sum(0).float()
+    while len(_output.shape) > 1:
+        _output = _output.sum(-1)
+    activations_count += _output
 
 
 def _backward_hook(module, grad_input, grad_output):
     global gradients, gradients_x_input
-    gradients += grad_output[0].abs().sum(0)
-    gradients_x_input += (grad_output[0] * activations).abs().sum(0)
+    _gradients = grad_output[0].abs().sum(0)
+    while len(_gradients.shape) > 1:
+        _gradients = _gradients.sum(-1)
+    gradients += _gradients
+
+    _gradients_x_input = (grad_output[0] * activations).abs().sum(0)
+    while len(_gradients_x_input.shape) > 1:
+        _gradients_x_input = _gradients_x_input.sum(-1)
+    gradients_x_input += _gradients_x_input
 
 
 def _sum_absolute_weights(module):
