@@ -67,19 +67,19 @@ def get_pruning_graph(self):
     return pruning[::-1][1:]
 
 
-def prunable_vgg11(num_classes=10):
-    """Constructs a VGG-11 model for CIFAR dataset"""
-    model = vgg11(num_classes=num_classes)
-    model.classifier[0] = nn.Linear(512, 4096)
-    VGG.forward = forward
-    VGG.get_pruning_graph = get_pruning_graph
-    return model
-
-
 def prunable_vgg16(num_classes=10):
     """Constructs a VGG-11 model for CIFAR dataset"""
     model = vgg16_bn(num_classes=num_classes)
-    model.classifier = nn.Sequential(nn.Linear(512, 10))
+    model.classifier = nn.Sequential(
+            nn.Dropout(),
+            nn.Linear(512, 512),
+            nn.ReLU(True),
+            nn.Dropout(),
+            nn.Linear(512, 512),
+            nn.ReLU(True),
+            nn.Linear(512, 10),
+        )
+    model._initialize_weights()
     VGG.forward = forward
     VGG.get_pruning_graph = get_pruning_graph
     return model
@@ -90,29 +90,21 @@ def get_model_with_name():
     return model, "CIFAR10-VGG16"
 
 
-def loss(output, target, reduction = "mean"):
-    return F.nll_loss(F.log_softmax(output, dim=1), target, reduction=reduction)
+def loss(output, target):
+    return F.cross_entropy(output, target)
 
 
 def get_optimizer_for_model(model, epoch):
-    lr = 1e-2
-    if epoch > 180:
-        lr *= 0.5e-3
-    elif epoch > 160:
-        lr *= 1e-3
-    elif epoch > 120:
-        lr *= 1e-2
-    elif epoch > 80:
-        lr *= 1e-1
+    lr = 0.05 * (0.5 ** (epoch // 30))
     print('Learning rate: ', lr)
     return optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
 
 
 def get_dataset_and_loaders(use_cuda=torch.cuda.is_available()):
 
-    kwargs = {"num_workers": 2, "pin_memory": True} if use_cuda else {}
-    normalize = transforms.Normalize(mean=[0.4914, 0.482, 0.4465],
-                                     std=[0.2023, 0.1994, 0.2010])
+    kwargs = {"num_workers": 1, "pin_memory": True} if use_cuda else {}
+    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                     std=[0.229, 0.224, 0.225])
 
     dataset = datasets.CIFAR10(
         "../data",
@@ -120,6 +112,7 @@ def get_dataset_and_loaders(use_cuda=torch.cuda.is_available()):
         download=True,
         transform=transforms.Compose([
             transforms.RandomHorizontalFlip(),
+            transforms.RandomCrop(32, 4),
             transforms.ToTensor(),
             normalize
         ])
@@ -129,7 +122,7 @@ def get_dataset_and_loaders(use_cuda=torch.cuda.is_available()):
 
     train_loader = torch.utils.data.DataLoader(
         train_set,
-        batch_size=250,
+        batch_size=128,
         shuffle=True,
         **kwargs,
     )
