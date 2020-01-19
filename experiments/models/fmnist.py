@@ -27,7 +27,7 @@ class Net(nn.Module):
 
         self.fc2 = nn.Linear(4096, 10)
 
-        self.modules = [self.conv1, self.bn1, self.relu1, self.maxpool1,
+        self.my_modules = [self.conv1, self.bn1, self.relu1, self.maxpool1,
                         self.conv2, self.bn2, self.relu2, self.maxpool2,
                         nn.Flatten(1),
                         self.fc1, self.bn3, self.relu3,
@@ -38,14 +38,14 @@ class Net(nn.Module):
                 process_as_intermediate_output_module=None,
                 linearize=False):
 
-        i, j = 0, len(self.modules)
+        i, j = 0, len(self.my_modules)
 
         if process_as_intermediate_output_module is not None:
-            i = 1 + self.modules.index(process_as_intermediate_output_module)
+            i = 1 + self.my_modules.index(process_as_intermediate_output_module)
         if return_intermediate_output_module is not None:
-            j = 1 + self.modules.index(return_intermediate_output_module)
+            j = 1 + self.my_modules.index(return_intermediate_output_module)
 
-        for module in self.modules[i:j]:
+        for module in self.my_modules[i:j]:
             if linearize is True and module in [self.relu1, self.relu2, self.relu3]:
                 x = x
             if linearize is True and module in [self.maxpool1, self.maxpool2]:

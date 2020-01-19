@@ -7,8 +7,8 @@ from torchsummary import summary, torchsummary
 
 from experiments.utils import (
     now,
-    log,
-    get_parameter_count,
+    log_dict,
+    get_parameter_count_and_flops,
     get_layer_sizes,
     save_model_state,
     load_model_state,
@@ -75,7 +75,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
     correct = 0
     samples = 0
     cumulative_loss = 0
-
+    start = timer()
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
@@ -94,15 +94,17 @@ def train(args, model, device, train_loader, optimizer, epoch):
 
         if batch_idx % (args.log_interval * 1) == 0:
             print(
-                "Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f} \t Accuracy: {:.3f}".format(
+                "Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f} \t Accuracy: {:.3f}\t Time: {:.1f}s".format(
                     epoch,
                     batch_idx * len(data),
                     len(train_loader.dataset),
                     100.0 * batch_idx / len(train_loader),
                     loss.item(),
                     correct / samples,
+                    timer() - start
                 )
             )
+            start = timer()
 
     return cumulative_loss / samples, correct / samples
 
@@ -166,10 +168,10 @@ def main():
     )
 
     if args.load is not None:
-        load_model_state(model, model_name, args.load, pruner=pruner)
+        load_model_state(model, model_name, args.load)
 
     optimizer = experiment.get_optimizer_for_model(model, 0)
-    initial_parameters = get_parameter_count(model)
+    initial_parameters, initial_flops = get_parameter_count_and_flops(model, input_size, device="cuda" if use_cuda else "cpu")
 
     sparsity = args.sparsity
     pruning_steps = args.pruning_steps
@@ -191,7 +193,7 @@ def main():
         optimizer.load_state_dict(opt_state)
 
     best_model_state = None
-    best_pruner_state = None
+    # best_pruner_state = None
     best_test_loss = None
 
     for epoch in range(1, args.epochs + 1):
@@ -205,15 +207,17 @@ def main():
 
         # Compute test accuracy
         test_loss, test_acc = test(args, model, device, test_loader)
+        test_loss_pp, test_acc_pp = test_loss, test_acc
+
 
         if best_model_state is None or test_loss < best_test_loss:
             best_test_loss = test_loss
-            best_pruner_state = pruner.state_dict()
+            # best_pruner_state = pruner.state_dict()
             best_model_state = model.state_dict()
 
         # Get n params before pruning
         # Otherwise test loss does not match the network
-        n_params = get_parameter_count(model)
+        n_params, flops = get_parameter_count_and_flops(model, input_size, device="cuda" if use_cuda else "cpu")
         layer_size = get_layer_sizes(model)
 
         # Prune and rebuild optimizer
@@ -235,27 +239,32 @@ def main():
                 optimizer = experiment.get_optimizer_for_model(model, epoch)
                 optimizer.load_state_dict(opt_state)
                 prune_time = timer() - start
-                test(args, model, device, test_loader)
+                test_loss_pp, test_acc_pp = test(args, model, device, test_loader)
 
-        log(
-            experiment_id,
-            timestamp_id,
-            epoch,
-            train_acc,
-            test_acc,
-            train_loss,
-            test_loss,
-            n_params,
-            initial_parameters,
-            layer_size,
-            train_time,
-            prune_time,
+        log_dict("log",
+                 {
+                     "timestamp": timestamp_id,
+                     "epoch": epoch,
+                     "train_acc": train_acc,
+                     "test_acc": test_acc,
+                     "test_acc_pp": test_acc_pp,
+                     "train_loss": train_loss,
+                     "test_loss": test_loss,
+                     "test_loss_pp": test_loss_pp,
+                     "n_params": n_params,
+                     "flops": flops,
+                     "n_params_full": initial_parameters,
+                     "layers": layer_size,
+                     "train_time": train_time,
+                     "prune_time": prune_time,
+                     "experiment": experiment_id,
+                 }
         )
 
     # Save best model
     if args.save is True:
         save_model_state(
-            best_model_state, model_name, timestamp_id, pruner_state=best_pruner_state
+            best_model_state, model_name, timestamp_id
         )
 
 

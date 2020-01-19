@@ -135,3 +135,5 @@ data/
 *.pt
 
 *.pruner
+
+*.csv

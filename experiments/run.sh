@@ -3,7 +3,7 @@ export PYTHONPATH="${PYTHONPATH}:$(pwd)/.."
 
 # Test one-shot pruning, on different sparsity ratios, after full training
 # -- > Run full training, saving best model
-#for i in {1..1}; do python3 train.py --experiment fmnist --save --sparsity 1 --epochs 50 --pruning-steps 0 --pruning-logic random; done
+for i in {1..3}; do python3 train.py --experiment fmnist --save --sparsity 1 --epochs 50 --pruning-steps 0 --pruning-logic random; done
 
 ## -- > Load models, prune and fine tune
 #for i in {1..3}; do python3 train.py --experiment fmnist --load last --sparsity 0.3 --pruning-steps 1 --pruning-start 0 --pruning-logic sv-abs-smallest; done
@@ -24,19 +24,28 @@ export PYTHONPATH="${PYTHONPATH}:$(pwd)/.."
 
 
 # Dynamic pruning with max-loss-gap
-for i in {1..3}; do python3 train.py --experiment fmnist --sparsity 0 --max-loss-gap 1 --pruning-steps 10 --pruning-start 1 --pruning-logic sv-abs-smallest; done
-for i in {1..3}; do python3 train.py --experiment fmnist --sparsity 0 --max-loss-gap 1 --pruning-steps 10 --pruning-start 1 --pruning-logic count-smallest; done
-for i in {1..3}; do python3 train.py --experiment fmnist --sparsity 0 --max-loss-gap 1 --pruning-steps 10 --pruning-start 1  --pruning-logic grad-abs-smallest; done
-for i in {1..3}; do python3 train.py --experiment fmnist --sparsity 0 --max-loss-gap 1 --pruning-steps 10 --pruning-start 1  --pruning-logic random; done
+for i in {1..3}; do python3 train.py --experiment fmnist --sparsity 0 --max-loss-gap 1 --pruning-steps 25 --pruning-start 1 --pruning-logic sv-abs-smallest; done
+for i in {1..3}; do python3 train.py --experiment fmnist --sparsity 0 --max-loss-gap 1 --pruning-steps 25 --pruning-start 1 --pruning-logic count-smallest; done
+for i in {1..3}; do python3 train.py --experiment fmnist --sparsity 0 --max-loss-gap 1 --pruning-steps 25 --pruning-start 1  --pruning-logic grad-smallest; done
+for i in {1..3}; do python3 train.py --experiment fmnist --sparsity 0 --max-loss-gap 1 --pruning-steps 25 --pruning-start 1  --pruning-logic taylor-smallest; done
+for i in {1..3}; do python3 train.py --experiment fmnist --sparsity 0 --max-loss-gap 1 --pruning-steps 25 --pruning-start 1  --pruning-logic weight-smallest; done
+for i in {1..3}; do python3 train.py --experiment fmnist --sparsity 0 --max-loss-gap 1 --pruning-steps 25 --pruning-start 1  --pruning-logic random; done
+
+#for i in {1..3}; do python3 train.py --experiment fmnist --sparsity 0 --max-loss-gap 1 --pruning-steps 25 --pruning-start 1 --pruning-logic sv-abs-smallest; done
+#for i in {1..3}; do python3 train.py --experiment fmnist --sparsity 0 --max-loss-gap 1 --pruning-steps 25 --pruning-start 1 --pruning-logic count-smallest; done
+#for i in {1..3}; do python3 train.py --experiment fmnist --sparsity 0 --max-loss-gap 1 --pruning-steps 25 --pruning-start 1  --pruning-logic grad-smallest; done
+#for i in {1..3}; do python3 train.py --experiment fmnist --sparsity 0 --max-loss-gap 1 --pruning-steps 25 --pruning-start 1  --pruning-logic taylor-smallest; done
+#for i in {1..3}; do python3 train.py --experiment fmnist --sparsity 0 --max-loss-gap 1 --pruning-steps 25 --pruning-start 1  --pruning-logic weight-smallest; done
+#for i in {1..3}; do python3 train.py --experiment fmnist --sparsity 0 --max-loss-gap 1 --pruning-steps 25 --pruning-start 1  --pruning-logic random; done
 
 # -- > Run full training, saving best model
-for i in {1..1}; do python3 train.py --experiment fmnist --save --sparsity 1 --epochs 50 --pruning-steps 0 --pruning-logic random; done
+#for i in {1..1}; do python3 train.py --experiment fmnist --save --sparsity 1 --epochs 50 --pruning-steps 0 --pruning-logic random; done
 
 # Dynamic pruning with max-loss-gap
-for i in {1..3}; do python3 train.py --experiment fmnist --load last --sparsity 0 --max-loss-gap 1 --pruning-steps 10 --pruning-start 1 --pruning-logic sv-abs-smallest; done
-for i in {1..3}; do python3 train.py --experiment fmnist --load last --sparsity 0 --max-loss-gap 1 --pruning-steps 10 --pruning-start 1 --pruning-logic count-smallest; done
-for i in {1..3}; do python3 train.py --experiment fmnist --load last --sparsity 0 --max-loss-gap 1 --pruning-steps 10 --pruning-start 1  --pruning-logic grad-abs-smallest; done
-for i in {1..3}; do python3 train.py --experiment fmnist --load last --sparsity 0 --max-loss-gap 1 --pruning-steps 10 --pruning-start 1  --pruning-logic random; done
+#for i in {1..3}; do python3 train.py --experiment fmnist --load last --sparsity 0 --max-loss-gap 1 --pruning-steps 10 --pruning-start 1 --pruning-logic sv-abs-smallest; done
+#for i in {1..3}; do python3 train.py --experiment fmnist --load last --sparsity 0 --max-loss-gap 1 --pruning-steps 10 --pruning-start 1 --pruning-logic count-smallest; done
+#for i in {1..3}; do python3 train.py --experiment fmnist --load last --sparsity 0 --max-loss-gap 1 --pruning-steps 10 --pruning-start 1  --pruning-logic grad-abs-smallest; done
+#for i in {1..3}; do python3 train.py --experiment fmnist --load last --sparsity 0 --max-loss-gap 1 --pruning-steps 10 --pruning-start 1  --pruning-logic random; done
 
 # One shot pruning
 #for i in {1..3}; do python3 train.py --experiment fmnist --sparsity 0.3 --pruning-steps 1 --pruning-start 25 --pruning-logic sv-abs-smallest; done

@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
 from torchvision.models import vgg11, vgg16_bn, vgg16, VGG
-from torchsummary import summary
+
 
 
 def forward(self, x,
@@ -78,7 +78,7 @@ def prunable_vgg11(num_classes=10):
 
 def prunable_vgg16(num_classes=10):
     """Constructs a VGG-11 model for CIFAR dataset"""
-    model = vgg16(num_classes=num_classes)
+    model = vgg16_bn(num_classes=num_classes)
     model.classifier = nn.Sequential(nn.Linear(512, 10))
     VGG.forward = forward
     VGG.get_pruning_graph = get_pruning_graph
@@ -110,7 +110,7 @@ def get_optimizer_for_model(model, epoch):
 
 def get_dataset_and_loaders(use_cuda=torch.cuda.is_available()):
 
-    kwargs = {"num_workers": 1, "pin_memory": True} if use_cuda else {}
+    kwargs = {"num_workers": 2, "pin_memory": True} if use_cuda else {}
     normalize = transforms.Normalize(mean=[0.4914, 0.482, 0.4465],
                                      std=[0.2023, 0.1994, 0.2010])
 
@@ -129,7 +129,7 @@ def get_dataset_and_loaders(use_cuda=torch.cuda.is_available()):
 
     train_loader = torch.utils.data.DataLoader(
         train_set,
-        batch_size=100,
+        batch_size=250,
         shuffle=True,
         **kwargs,
     )
@@ -150,7 +150,7 @@ def get_dataset_and_loaders(use_cuda=torch.cuda.is_available()):
                 normalize
             ])
         ),
-        batch_size=100,
+        batch_size=250,
         shuffle=True,
         **kwargs,
     )
@@ -159,16 +159,23 @@ def get_dataset_and_loaders(use_cuda=torch.cuda.is_available()):
 
 
 def test():
+    from torchsummary import summary
+    from thop import profile
+    from shapley_pruning.prunable import ContinuousPruner
+
     model, name = get_model_with_name()
-    pg = model.get_pruning_graph()
-
-
+    dataset, train_loader, validation_loader, test_loader = get_dataset_and_loaders(use_cuda=False)
     summary(model, input_size=(3, 32, 32), device="cpu")
 
-    for m, subm in pg:
-        print (m)
-        print (subm)
-        print ("\n")
+    x = torch.randn(1, 3, 32, 32)
+    macs, params = profile(model, inputs=(x,))
+    print (macs)
+    print (params)
+
+    opt = get_optimizer_for_model(model, 0)
+    pg = model.get_pruning_graph()
+    pruner = ContinuousPruner(model, (3, 32, 32), pg, 'cpu', validation_loader, test_loader, loss, verbose=1)
+    pruner.prune(0.5, prune_all_layers=True, optimizer=opt, ranking_method='random')
 
 
 if __name__ == "__main__":

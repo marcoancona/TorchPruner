@@ -1,6 +1,5 @@
 export PYTHONPATH="/home/anconam/Shapley_Pruning"
-export LD_LIBRARY_PATH="/home/anconam/cudnn/cuda-10.0/lib64:$LD_LIBRARY_PATH"
-export CUDA_VISIBLE_DEVICES="0"
+#export CUDA_VISIBLE_DEVICES="0,1"
 
 # Full model
 for i in {1..1}; do python3 train.py --experiment cifar10 --epochs 150 --save --sparsity 1.0  --pruning-steps 0 --pruning-start 0 --pruning-logic random; done
