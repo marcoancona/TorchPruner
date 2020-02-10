@@ -47,7 +47,7 @@ class ContinuousPruner:
         self._max_loss_increase = None
         self._epoch = 0
 
-        self._run_forward()
+        # self._run_forward()
 
     def prune(
         self,
@@ -68,6 +68,8 @@ class ContinuousPruner:
         :return:
         """
 
+        # self.model.eval()
+
         self._ranking_method = ranking_method
         self._max_loss_increase = max_loss_increase_percent
         self._epoch = epoch
@@ -82,7 +84,7 @@ class ContinuousPruner:
         if prune_all_layers:
             to_prune = self.pruning_graph
         else:
-            current_module_idx = max(0, (epoch - 1)) % len(self.pruning_graph)
+            current_module_idx = epoch % len(self.pruning_graph)
             to_prune = self.pruning_graph[current_module_idx : current_module_idx + 1]
 
         for module, cascading_modules in to_prune:
@@ -153,43 +155,117 @@ class ContinuousPruner:
     ):
         scores, indices = None, None
 
-        if ranking_method.startswith("random"):
-            scores = attributions_for_module(self, module, "random")
-        elif ranking_method.startswith("grad"):
-            scores = attributions_for_module(self, module, "grad")
-        elif ranking_method.startswith("weight"):
-            scores = attributions_for_module(self, module, "weight")
-        elif ranking_method.startswith("taylor"):
-            scores = attributions_for_module(self, module, "taylor")
-        elif ranking_method.startswith("count"):
-            scores = attributions_for_module(self, module, "count")
-        elif ranking_method.startswith("sv"):
-            scores = attributions_for_module(self, module, "sv")
+        scores = attributions_for_module(self, module, ranking_method)
 
         if scores is None:
             raise RuntimeError("ranking_method not valid")
-
-        while len(scores.shape) > 1:
-            print("WARNING: found scores shape with more than 1 dimension")
-            scores = scores.sum(-1)
-
-        if "-abs" in ranking_method:
-            scores = np.abs(scores)
 
         if pruning_ratio is not None:
             # Fixed pruning ratio
             N = len(scores)
             k = int(pruning_ratio * N)
             indices = np.argsort(scores)[:k]
+
+            # This works well, but it is conservative
+            # indices = np.argwhere(scores < 0.1 * np.max(scores))
+
+            indices = indices.flatten()
+            # indices = indices[:int(0.95*N)]
+            #
+            # ssum = scores.sum()
+            # ssum_target = 0.5 * ssum
+            # indices = []
+            # current_sum = 0
+            # for i in np.argsort(scores):
+            #     current_sum += scores[i]
+            #     indices.append(i)
+            #     if current_sum >= ssum_target:
+            #         return indices
+
+
         else:
-            # Dynamic pruning (how many to remove is based on max_loss_increase_percent)
-            indices, loss_increment = self._compute_dynamic_pruning_indices(
-                module, scores, max_loss_increase_percent
-            )
+            # indices = np.argwhere(scores < 0)
+            # indices = indices.flatten()
+            # # Dynamic pruning (how many to remove is based on max_loss_increase_percent)
+            indices = np.argsort(scores)
+            loss_history, acc_history = self._compute_dynamic_pruning_indices(module, scores, self.data_loader)
+            min_loss = loss_history[0]
+            # min_loss_idx = np.argmin(loss_history)
+            for idx, l in enumerate(loss_history):
+                if (l - min_loss) / min_loss * 100 > max_loss_increase_percent:
+                    indices = indices[:idx]
+                    break
 
         if self.verbose > 0:
             print(f"Sum of scores of removed indices: {scores[indices].sum()}")
         return indices
+
+    def run_activation_test_all_modules(self):
+        methods = [
+
+            "sv-loss-2std#5--a",
+            "sv-loss-2std#5--b",
+            "sv-loss-2std#5--c",
+
+            # "sv-loss-99p#5--a",
+            # "sv-loss-99p#10--a",
+            # "sv-loss-99p#20--a",
+            # "sv-loss-99p#5--b",
+            # "sv-loss-99p#10--b",
+            # "sv-loss-99p#20--b",
+            # "sv-loss-99p#5--c",
+            # "sv-loss-99p#10--c",
+            # "sv-loss-99p#20--c",
+            # "sv-loss-99p#5--d",
+            # "sv-loss-99p#10--d",
+            # "sv-loss-99p#20--d",
+            # "sv-loss-99p#5--e",
+            # "sv-loss-99p#10--e",
+            # "sv-loss-99p#20--e",
+            #
+            "sv-loss#10--a",
+            "sv-loss#10--b",
+            "sv-loss#10--c",
+            #
+            "taylor", "taylor-abs", "weight", "count", "grad",
+            "random--a",
+            "random--b",
+            "random--c",
+        ]
+        for module, cascading_modules in self.pruning_graph:
+            if True or self._module_name(module) == "features.5":
+                self.run_activation_test(module, methods)
+            # break
+
+    def run_activation_test(self, module, methods):
+        import h5py
+        f = h5py.File('comparison.hdf5', 'a')
+        path = f"{self.experiment_id}/{self._module_name(module)}/{self._epoch}"
+
+        for ranking_method in methods:
+            print (f"Testing {ranking_method} on {module}")
+            scores = attributions_for_module(self, module, ranking_method)
+            loss_history, acc_history = self._compute_dynamic_pruning_indices(module, scores, self.data_loader)
+            loss_history_test, acc_history_test = self._compute_dynamic_pruning_indices(module, scores,  self.test_data_load)
+            if f"{path}/{ranking_method}/scores" in f:
+                del f[f"{path}/{ranking_method}/scores"]
+            if f"{path}/{ranking_method}/loss" in f:
+                del f[f"{path}/{ranking_method}/loss"]
+            if f"{path}/{ranking_method}/acc" in f:
+                del f[f"{path}/{ranking_method}/acc"]
+            if f"{path}/{ranking_method}/loss_test" in f:
+                del f[f"{path}/{ranking_method}/loss_test"]
+            if f"{path}/{ranking_method}/acc_test" in f:
+                del f[f"{path}/{ranking_method}/acc_test"]
+
+            f.create_dataset(f"{path}/{ranking_method}/scores", data=np.array(scores))
+            f.create_dataset(f"{path}/{ranking_method}/loss", data=np.array(loss_history))
+            f.create_dataset(f"{path}/{ranking_method}/acc", data=np.array(acc_history))
+            f.create_dataset(f"{path}/{ranking_method}/loss_test", data=np.array(loss_history_test))
+            f.create_dataset(f"{path}/{ranking_method}/acc_test", data=np.array(acc_history_test))
+
+        f.close()
+
 
     def _run_forward(
         self,
@@ -197,7 +273,9 @@ class ContinuousPruner:
         y_true=None,
         return_intermediate_output_module=None,
         process_as_intermediate_output_module=None,
+        reduction="mean",
         linearize=False,
+        cl=False
     ):
         acc, loss = None, None
         if x is None:
@@ -214,71 +292,78 @@ class ContinuousPruner:
         )
         if y_true is not None and return_intermediate_output_module is None:
             y_pred = y.argmax(dim=1, keepdim=True)
-            loss = self.loss(y, y_true, reduction="mean")
+            if reduction == "mean+std":
+                loss = self.loss(y, y_true, reduction="none")
+                loss = loss.mean() + loss.std()
+            else:
+                loss = self.loss(y, y_true, reduction=reduction)
+
             acc = y_pred.eq(y_true.view_as(y_pred)).sum().item() / y_true.shape[0]
         return y, acc, loss
 
-    def _get_indices_mapping_for_pruning_fixed(
-        self, module, next_module, pruning_indices
-    ):
-        if len(pruning_indices) == 0:
-            return np.array([])
-
-        assert any(
-            [isinstance(module, t) for t in [nn.Linear, nn.Conv2d]]
-        ), "Only Linear and Conv2D supported for pruning"
-
-        assert any(
-            [
-                isinstance(module, t)
-                for t in [nn.Linear, nn.Conv2d, nn.BatchNorm1d, nn.BatchNorm2d]
-            ]
-        ), "Only Linear and Conv2D supported for cascading pruning"
-
-        def _get_masked_output(module, pruning_indices):
-            original_weights = module.weight.clone().detach()
-            module.weight.requires_grad = False
-            module.weight.index_fill_(
-                0,
-                torch.tensor(pruning_indices).to(self.device),
-                torch.tensor(np.nan).to(self.device),
-            )
-            module.weight.requires_grad = True
-            activations, _, __ = self._run_forward(
-                return_intermediate_output_module=module
-            )
-            module.weight.data = original_weights
-            module.weight.requires_grad = True
-            return activations
-
-        default = [("weight", 1, pruning_indices)]
-
-        if isinstance(module, nn.Conv2d):
-            conv_activations = _get_masked_output(module, pruning_indices)
-            lin_activations = torch.flatten(conv_activations, 1).sum(0)
-            mask_indices = np.argwhere(
-                np.isnan(lin_activations.clone().detach().cpu().numpy())
-            ).flatten()
-            if isinstance(next_module, nn.Linear):
-                return [("weight", 1, mask_indices)]
-            elif isinstance(next_module, nn.BatchNorm2d):
-                return [
-                    ("weight", 0, mask_indices),
-                    ("bias", 0, mask_indices),
-                    ("running_mean", 0, mask_indices),
-                    ("running_std", 0, mask_indices),
-                ]
-
-        elif isinstance(module, nn.Linear):
-            if isinstance(next_module, nn.BatchNorm1d):
-                return [
-                    ("weight", 0, pruning_indices),
-                    ("bias", 0, pruning_indices),
-                    ("running_mean", 0, pruning_indices),
-                    ("running_std", 0, pruning_indices),
-                ]
-
-        return default
+    # def _get_indices_mapping_for_pruning_fixed(
+    #     self, module, next_module, pruning_indices
+    # ):
+    #     if len(pruning_indices) == 0:
+    #         return np.array([])
+    #
+    #     assert any(
+    #         [isinstance(module, t) for t in [nn.Linear, nn.Conv2d]]
+    #     ), "Only Linear and Conv2D supported for pruning"
+    #
+    #     assert any(
+    #         [
+    #             isinstance(module, t)
+    #             for t in [nn.Linear, nn.Conv2d, nn.BatchNorm1d, nn.BatchNorm2d]
+    #         ]
+    #     ), "Only Linear and Conv2D supported for cascading pruning"
+    #
+    #     def _get_masked_output(module, pruning_indices):
+    #         original_weights = module.weight.clone().detach()
+    #         module.weight.requires_grad = False
+    #         module.weight.index_fill_(
+    #             0,
+    #             torch.tensor(pruning_indices).to(self.device),
+    #             torch.tensor(np.nan).to(self.device),
+    #         )
+    #         module.weight.requires_grad = True
+    #         activations, _, __ = self._run_forward(
+    #             return_intermediate_output_module=module
+    #         )
+    #         module.weight.data = original_weights
+    #         module.weight.requires_grad = True
+    #         return activations
+    #
+    #     default = [("weight", 1, pruning_indices)]
+    #
+    #     if isinstance(module, nn.Conv2d):
+    #         conv_activations = _get_masked_output(module, pruning_indices)
+    #         lin_activations = torch.flatten(conv_activations, 1).sum(0)
+    #         mask_indices = np.argwhere(
+    #             np.isnan(lin_activations.clone().detach().cpu().numpy())
+    #         ).flatten()
+    #         if isinstance(next_module, nn.Linear):
+    #             return [("weight", 1, mask_indices)]
+    #         elif isinstance(next_module, nn.BatchNorm2d):
+    #             return [
+    #                 ("weight", 0, mask_indices),
+    #                 ("bias", 0, mask_indices),
+    #                 ("running_mean", 0, mask_indices),
+    #                 ("running_std", 0, mask_indices),
+    #             ]
+    #
+    #     elif isinstance(module, nn.Linear):
+    #         if isinstance(next_module, nn.BatchNorm1d):
+    #             return [
+    #                 ("weight", 0, pruning_indices),
+    #                 ("bias", 0, pruning_indices),
+    #                 ("running_mean", 0, pruning_indices),
+    #                 ("running_std", 0, pruning_indices),
+    #             ]
+    #         elif isinstance(next_module, nn.Dropout):
+    #             next_module.p *=
+    #
+    #     return default
 
     def _get_indices_mapping_for_pruning(self, module, next_module, pruning_indices):
         if len(pruning_indices) == 0:
@@ -289,14 +374,20 @@ class ContinuousPruner:
 
         assert any(
             [
-                isinstance(module, t)
-                for t in [nn.Linear, nn.Conv2d, nn.BatchNorm1d, nn.BatchNorm2d]
+                isinstance(next_module, t)
+                for t in [nn.Linear, nn.Conv2d, nn.BatchNorm1d, nn.BatchNorm2d, nn.Dropout]
             ]
         ), "Only Linear and Conv2D supported for cascading pruning"
 
         # Copy module's weights and replace the axis that will be pruned with nans
         self._zero_gradients()
         original_weights = module.weight.clone().detach()
+        N = original_weights.shape[0]
+
+        if isinstance(next_module, nn.Dropout):
+            next_module.p *= (1. - len(pruning_indices) / N)
+            return []
+
         module.weight.requires_grad = False
         module.weight.index_fill_(
             0,
@@ -337,7 +428,7 @@ class ContinuousPruner:
         module.weight.requires_grad = True
         if isinstance(next_module, nn.Linear) or isinstance(next_module, nn.Conv2d):
             return [("weight", 1, indices)]
-        else:
+        elif isinstance(next_module, nn.BatchNorm2d) or isinstance(next_module, nn.BatchNorm1d):
             # BatchNorm2D/1D
             return [
                 ("weight", 0, indices),
@@ -346,12 +437,21 @@ class ContinuousPruner:
                 ("running_var", 0, indices),
             ]
 
-    def _compute_dynamic_pruning_indices(self, module, scores, max_increase_percent):
+    def _compute_dynamic_pruning_indices(self, module, scores, data_loader):
         with torch.no_grad():
             # Compute activations of current module
 
-            data, target = next(iter(self.data_loader))
+            found = False
+            for module_name, m in self.model.named_modules():
+                if module == m:
+                    found = True
+                elif isinstance(m, nn.ReLU) and found is True:
+                    module = m
+                    break
+
+            data, target = next(iter(data_loader))
             data, target = data.to(self.device), target.to(self.device)
+
             activations, _, __ = self._run_forward(
                 data, return_intermediate_output_module=module
             )
@@ -362,12 +462,10 @@ class ContinuousPruner:
             )
             all_indices = np.argsort(scores)
             indices = []
-            loss_history = []
+            loss_history = [full_loss.detach().cpu().numpy().item()]
+            acc_history = [full_accuracy]
             score_history = []
-            new_loss = full_loss
-            k = None
             for i in all_indices:
-
                 _, new_accuracy, new_loss = self._run_forward(
                     x=activations.index_fill(
                         1,
@@ -379,32 +477,10 @@ class ContinuousPruner:
                 )
                 indices.append(i)
                 loss_history.append(new_loss.detach().cpu().numpy().item())
+                acc_history.append(new_accuracy)
                 score_history.append(scores[i])
 
-                if 100 * (new_loss - full_loss) / full_loss <= max_increase_percent:
-                    continue
-                else:
-                    # Normally would break here, but we want the full statistic to plot it
-                    if k is None:
-                        k = len(indices)
-
-            # Statistics
-            log_dict(
-                f"{self.experiment_id}",
-                {
-                    "ranking_method": self._ranking_method,
-                    "layer": self._module_name(module),
-                    "max_loss_increase": self._max_loss_increase,
-                    "epoch": self._epoch,
-                    "full_loss": full_loss.detach().cpu().numpy().item(),
-                    "loss_history": json.dumps(loss_history),
-                    "indices": json.dumps(np.array(indices).tolist()),
-                    "scores": json.dumps(np.array(score_history).tolist()),
-                    "k": k,
-                },
-            )
-
-            return indices[:k], new_loss - full_loss
+            return loss_history, acc_history
 
     def _prune_module(self, module, indices_list):
         for param_name, axis, indices in indices_list:

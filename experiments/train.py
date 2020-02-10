@@ -2,8 +2,10 @@ from __future__ import print_function
 import argparse
 from timeit import default_timer as timer
 import torch
+import numpy as np
 from shapley_pruning.prunable import ContinuousPruner
 from torchsummary import summary, torchsummary
+
 
 from experiments.utils import (
     now,
@@ -14,10 +16,13 @@ from experiments.utils import (
     load_model_state,
 )
 import experiments.models.fmnist as fmnist
+import experiments.models.mnist as mnist
 import experiments.models.cifar10 as cifar10
+import experiments.models.transfer as cub200
 
 
-experiments = {"fmnist": fmnist, "cifar10": cifar10}
+
+experiments = {"fmnist": fmnist, "cifar10": cifar10, "cub200": cub200, "mnist": mnist}
 
 # Training settings
 parser = argparse.ArgumentParser()
@@ -35,6 +40,9 @@ parser.add_argument(
 )
 parser.add_argument(
     "--no-cuda", action="store_true", default=False, help="disables CUDA training"
+)
+parser.add_argument(
+    "--activations-test", action="store_true", default=False, help="Run activation test"
 )
 parser.add_argument(
     "--seed", type=int, default=1, metavar="S", help="random seed (default: not set)"
@@ -57,12 +65,24 @@ parser.add_argument("--pruning-interval", type=int, default=1)
 parser.add_argument("--pruning-logic", type=str)
 
 args = parser.parse_args()
-print(args)
+print("Running - ", args)
+
+# Seed for reproducibility
+torch.manual_seed(args.seed)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+# if not args.activations_test:
+#     # We fix Numpy random generators only if we are not running
+#     # activation tests, because in this case we need to test
+#     # different sampled permutations
+#     print ("Not Fix numpy seed")
+#     # np.random.seed(args.seed)
+
+# Define experiment id
 experiment = experiments[args.experiment]
 if experiments is None:
     raise RuntimeError(f"--model not valid, must be in {list(experiments.keys())}")
 assert args.sparsity >= 0, "--sparsity must be > 0 (or 0 for dynamic sparsity)"
-
 sparsity = f"s:{args.sparsity}" if args.sparsity > 0 else f"gap:{args.max_loss_gap}"
 experiment_id = f"{args.experiment}__{args.pruning_logic}_{sparsity}_steps:{args.pruning_steps}_start:{args.pruning_start}_int:{args.pruning_interval}"
 if args.load is not None:
@@ -79,6 +99,8 @@ def train(args, model, device, train_loader, optimizer, epoch):
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
 
+        optimizer.zero_grad()
+
         output = model(data)
         loss = experiment.loss(output, target)
         cumulative_loss += loss.item() * len(target)
@@ -88,7 +110,6 @@ def train(args, model, device, train_loader, optimizer, epoch):
         samples += len(target)
 
         # Perform optimization step
-        optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
@@ -170,7 +191,7 @@ def main():
         load_model_state(model, model_name, args.load)
 
     optimizer = experiment.get_optimizer_for_model(model, 0)
-    initial_parameters, initial_flops = get_parameter_count_and_flops(
+    initial_flops, initial_parameters = get_parameter_count_and_flops(
         model, input_size, device="cuda" if use_cuda else "cpu"
     )
 
@@ -180,30 +201,109 @@ def main():
     pruning_interval = args.pruning_interval
     max_increment_loss = args.max_loss_gap
 
-    if pruning_start == 0 and 0 < sparsity < 1.0:
+    # PRE-TRAINING PIPELINE
+    if args.activations_test:
+        pruner.run_activation_test_all_modules()
+
+    test_loss, test_acc = test(args, model, device, test_loader)
+    test_loss_pp, test_acc_pp = test_loss, test_acc
+    prune_time = 0.0
+    pruning_count = 0
+
+    flops, n_params = get_parameter_count_and_flops(
+        model, input_size, device="cuda" if use_cuda else "cpu"
+    )
+    layer_size = get_layer_sizes(model)
+
+    # log_dict(
+    #     "log",
+    #     {
+    #         "timestamp": timestamp_id,
+    #         "epoch": 0,
+    #         "train_acc": 0,
+    #         "test_acc": test_acc,
+    #         "test_acc_pp": test_acc_pp,
+    #         "train_loss": 0,
+    #         "test_loss": test_loss,
+    #         "test_loss_pp": test_loss_pp,
+    #         "n_params": n_params,
+    #         "flops": flops,
+    #         "n_params_full": initial_parameters,
+    #         "layers": layer_size,
+    #         "train_time": 0.,
+    #         "prune_time": prune_time,
+    #         "experiment": experiment_id,
+    #     },
+    # )
+
+    if pruning_start == 0 and 0 <= sparsity < 1.0:
         # Pruning before training if steps == 0
         # Effectively, this means training a smaller network from scratch
-        opt_state = pruner.prune(
-            sparsity,
-            args.pruning_logic,
-            optimizer,
-            max_loss_increase_percent=max_increment_loss,
-            epoch=0,
-        )
-        optimizer = experiment.get_optimizer_for_model(model, 0)
+        for i in range(1):
+            prune_start = timer()
+            pruner.prune(
+                # pow(sparsity, 1/args.pruning_steps),
+                sparsity, # to be used when prune_all_layers is False
+                args.pruning_logic,
+                optimizer,
+                max_loss_increase_percent=max_increment_loss,
+                epoch=pruning_count,
+                prune_all_layers=False
+            )
+            pruning_count += 1
+            prune_time = timer() - prune_start
+            optimizer = experiment.get_optimizer_for_model(model, 0)
+            test_loss_pp, test_acc_pp = test(args, model, device, test_loader)
+            flops, n_params = get_parameter_count_and_flops(model, input_size, device="cuda" if use_cuda else "cpu")
+            layer_size = get_layer_sizes(model)
+            test_acc, test_loss = test_acc_pp, test_loss_pp
 
+    log_dict(
+        "log",
+        {
+            "timestamp": timestamp_id,
+            "epoch": 0,
+            "train_acc": 0,
+            "test_acc": test_acc,
+            "test_acc_pp": test_acc_pp,
+            "train_loss": 0,
+            "test_loss": test_loss,
+            "test_loss_pp": test_loss_pp,
+            "n_params": n_params,
+            "flops": flops,
+            "n_params_full": initial_parameters,
+            "layers": layer_size,
+            "train_time": 0.,
+            "prune_time": prune_time,
+            "experiment": experiment_id,
+        },
+    )
 
     best_model_state = None
-    # best_pruner_state = None
     best_test_loss = None
 
     for epoch in range(1, args.epochs + 1):
 
         # Train epoch
         start = timer()
-        train_loss, train_acc = train(
-            args, model, device, train_loader, optimizer, epoch
-        )
+
+        fine_tune_loss, _ = test(args, model, device, train_loader)
+        torch.save(model.state_dict(), "./tmp_model.pt")
+        while True:
+            print("Fine tune")
+            train(args, model, device, validation_loader, optimizer, epoch)
+            new_test_loss, new_test_acc = test(args, model, device, train_loader)
+            if new_test_loss >= fine_tune_loss:
+                print ("Restoring...")
+                model.load_state_dict(torch.load("./tmp_model.pt"))
+                break
+            fine_tune_loss = new_test_loss
+            torch.save(model.state_dict(), "./tmp_model.pt")
+
+        # if test_acc < 1:
+        #     train_loss, train_acc = train(args, model, device, train_loader, optimizer, epoch)
+        # else:
+        train_loss, train_acc = new_test_loss, new_test_acc
         train_time = timer() - start
 
         # Compute test accuracy
@@ -212,35 +312,35 @@ def main():
 
         if best_model_state is None or test_loss < best_test_loss:
             best_test_loss = test_loss
-            # best_pruner_state = pruner.state_dict()
             best_model_state = model.state_dict()
 
         # Get n params before pruning
         # Otherwise test loss does not match the network
-        n_params, flops = get_parameter_count_and_flops(
-            model, input_size, device="cuda" if use_cuda else "cpu"
-        )
+        flops, n_params = get_parameter_count_and_flops(model, input_size, device="cuda" if use_cuda else "cpu")
         layer_size = get_layer_sizes(model)
 
         # Prune and rebuild optimizer
         start = timer()
         prune_time = 0.0
 
-        if (
-            pruning_start <= epoch < pruning_start + pruning_steps * pruning_interval
-            and sparsity < 1.0
-        ):
-            if (epoch - 1) % pruning_interval == 0:
+        if pruning_count < pruning_steps and sparsity < 1.0:
+            if (epoch-pruning_start) % pruning_interval == 0:
                 opt_state = pruner.prune(
-                    pow(sparsity, 1 / pruning_steps),
+                    # pow(sparsity, 1/pruning_steps),
+                    sparsity,  # to be used when prune_all_layers is False
                     args.pruning_logic,
                     optimizer,
                     max_loss_increase_percent=max_increment_loss,
-                    epoch=epoch,
+                    epoch=pruning_count,
+                    prune_all_layers=False
                 )
+                pruning_count += 1
                 optimizer = experiment.get_optimizer_for_model(model, epoch, opt_state)
                 prune_time = timer() - start
                 test_loss_pp, test_acc_pp = test(args, model, device, test_loader)
+
+
+
         else:
             # Recreate optimizer anyway, because we need to adjust learning rate based on epoch
             opt_state = optimizer.state_dict()

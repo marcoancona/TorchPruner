@@ -39,6 +39,7 @@ def load_model_state(model, model_name, timestamp):
     load_path = model_name
     if isinstance(timestamp, str) and len(timestamp) > 0 and timestamp != "last":
         load_path += f"_{timestamp}"
+    print(f"Loading {current_dir}/weights/{load_path}.pt")
     model.load_state_dict(torch.load(f"{current_dir}/weights/{load_path}.pt"))
 
 
@@ -62,6 +63,6 @@ def get_parameter_count_and_flops(model, input_size, device):
     # Notice that, because of BathNorm, the sample dim must be >= 2
     x = torch.randn((2,) + tuple(input_size))
     x = x.to(device)
-    print(x.shape)
     macs, params = profile(model, inputs=(x,))
+    print (f"Model with {params} params and {2*macs} flops")
     return 2 * macs, params

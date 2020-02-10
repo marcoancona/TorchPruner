@@ -62,7 +62,7 @@ def get_pruning_graph(self):
                 pruning[-1][1].reverse()
             current = module
             pruning.append((module, []))
-        elif any([isinstance(module, c) for c in [nn.BatchNorm2d]]) and current is not None:
+        elif any([isinstance(module, c) for c in [nn.BatchNorm2d, nn.Dropout]]) and current is not None:
             pruning[-1][1].append(module)
     return pruning[::-1][1:]
 
@@ -85,19 +85,84 @@ def prunable_vgg16(num_classes=10):
     return model
 
 
+class SimpleFCNet(nn.Module):
+    def __init__(self):
+        super(SimpleFCNet, self).__init__()
+
+        self.fc = nn.Sequential(
+            nn.Flatten(1),
+            nn.Linear(32 * 32 * 3, 2024),
+            nn.LeakyReLU(),
+            nn.Linear(2024, 2024),
+            nn.LeakyReLU(),
+            nn.Linear(2024, 10)
+        )
+
+    def forward(self, x,
+                return_intermediate_output_module=None,
+                process_as_intermediate_output_module=None,
+                linearize=False):
+
+        evaluate = process_as_intermediate_output_module is None
+
+        # if return_intermediate_output_module:
+        # print ("Forward with return_intermediate_output_module")
+
+        def forward_module(module, x):
+            # print(f".. forward {module}")
+            if linearize:
+                if any([isinstance(module, c) for c in [nn.ReLU]]):
+                    # print(f".. linearize")
+                    return x
+                elif any([isinstance(module, c) for c in [nn.MaxPool2d]]):
+                    # print(f".. linearize")
+                    return F.avg_pool2d(x, module.kernel_size, module.stride)
+            return module(x)
+
+        for module in self.fc.children():
+            if evaluate:
+                x = forward_module(module, x)
+                if module == return_intermediate_output_module:
+                    return x
+            elif module == process_as_intermediate_output_module:
+                evaluate = True
+
+        return x
+
+    def get_pruning_graph(self):
+        modules = list(self.fc.children())
+        pruning = []
+        current = None
+
+        for module in modules:
+            if any([isinstance(module, c) for c in [nn.Linear, nn.Conv2d]]):
+                if current is not None:
+                    pruning[-1][1].append(module)
+                    pruning[-1][1].reverse()
+                current = module
+                pruning.append((module, []))
+            elif any([isinstance(module, c) for c in [nn.BatchNorm2d, nn.Dropout]]) and current is not None:
+                pruning[-1][1].append(module)
+        return pruning[::-1][1:]
+
+
 def get_model_with_name():
     model = prunable_vgg16()
     return model, "CIFAR10-VGG16"
+    # model = SimpleFCNet()
+    # return model, "CIFAR10-FC"
 
 
-def loss(output, target):
-    return F.cross_entropy(output, target)
+def loss(output, target, reduction="mean"):
+    return F.cross_entropy(output, target, reduction=reduction)
 
 
 def get_optimizer_for_model(model, epoch, prev_state=None):
     lr = 0.05 * (0.5 ** (epoch // 30))
+    lr = 0.005
     print('Learning rate: ', lr)
-    opt = optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
+    # opt = optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
+    opt = optim.SGD(model.parameters(), lr=lr, momentum=0.9)
     if prev_state is not None:
         opt.load_state_dict(prev_state)
         # Set again new lr, because it was replaced by load_state_dict
@@ -113,7 +178,7 @@ def get_dataset_and_loaders(use_cuda=torch.cuda.is_available()):
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
 
-    dataset = datasets.CIFAR10(
+    dataset_augmented = datasets.CIFAR10(
         "../data",
         train=True,
         download=True,
@@ -125,37 +190,40 @@ def get_dataset_and_loaders(use_cuda=torch.cuda.is_available()):
         ])
     )
 
-    train_set, val_set = torch.utils.data.random_split(dataset, [len(dataset) - 1000, 1000])
-
-    train_loader = torch.utils.data.DataLoader(
-        train_set,
-        batch_size=128,
-        shuffle=True,
-        **kwargs,
-    )
-
-    validation_loader = torch.utils.data.DataLoader(
-        val_set,
-        batch_size=500,
-        shuffle=True,
-        **kwargs,
-    )
-
-    test_loader = torch.utils.data.DataLoader(
-        datasets.CIFAR10(
+    testset = datasets.CIFAR10(
             "../data",
             train=False,
             transform=transforms.Compose([
                 transforms.ToTensor(),
                 normalize
             ])
-        ),
-        batch_size=250,
+        )
+
+    test_set, reduced_train_set = torch.utils.data.random_split(testset, [len(testset) - 1000, 1000])
+    reduced_train_set_prune, reduced_train_set_val = torch.utils.data.random_split(reduced_train_set, [len(reduced_train_set) - 500, 500])
+
+    train_loader = torch.utils.data.DataLoader(
+        reduced_train_set_prune,
+        batch_size=50,
         shuffle=True,
         **kwargs,
     )
 
-    return dataset, train_loader, validation_loader, test_loader
+    validation_loader = torch.utils.data.DataLoader(
+        reduced_train_set_val,
+        batch_size=50,
+        shuffle=False,
+        **kwargs,
+    )
+
+    test_loader = torch.utils.data.DataLoader(
+        test_set,
+        batch_size=250,
+        shuffle=False,
+        **kwargs,
+    )
+
+    return dataset_augmented, train_loader, validation_loader, test_loader
 
 
 def test():
