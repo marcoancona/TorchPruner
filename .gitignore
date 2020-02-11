@@ -137,3 +137,6 @@ data/
 *.pruner
 
 *.csv
+
+*.pdf
+*.hdf5

@@ -18,7 +18,7 @@ class APoZAttributionMetric(_AttributionMetric):
             m.register_forward_hook(self._forward_hook())
         self.run_forward()
         for m in modules:
-            attr = m._tp_nonzero_count.deatch().cpu().numpy()
+            attr = m._tp_nonzero_count.detach().cpu().numpy()
             result.append(self.aggregate_over_samples(attr))
         return result
 
@@ -28,7 +28,7 @@ class APoZAttributionMetric(_AttributionMetric):
             nonzero_count = (output > 0).float()
             while len(nonzero_count.shape) > 2:
                 nonzero_count = nonzero_count.sum(-1)
-            if module._tp_nonzero_count is None:
+            if not hasattr(module, "_tp_nonzero_count"):
                 module._tp_nonzero_count = nonzero_count
             else:
                 module._tp_nonzero_count = torch.cat((module._tp_nonzero_count, nonzero_count), 0)

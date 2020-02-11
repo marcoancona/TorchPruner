@@ -4,25 +4,39 @@ import logging, warnings
 import numpy as np
 import torch
 import torch.nn as nn
+from torch.utils.data import TensorDataset
 import torch.nn.functional as F
 
 
-from torchpruner import WeightNormAttributionMetric, \
-    RandomAttributionMetric, SensitivityAttributionMetric, TaylorAttributionMetric, APoZAttributionMetric
+from torchpruner import (
+    WeightNormAttributionMetric,
+    RandomAttributionMetric,
+    SensitivityAttributionMetric,
+    TaylorAttributionMetric,
+    APoZAttributionMetric,
+    ShapleyAttributionMetric
+)
 
 
-def max_model(device):
-    x = np.array([
-        [0, 1],
-        [1, 0],
-        [1, 2]
-    ])
+def max_model(device, version=1):
+    # Make sure symmetric inputs are provided
+    x = np.array([[0, 1], [1, 0], [1, 2], [2, 1]])
     y = np.array([[np.max(xi)] for xi in x])
     x = torch.tensor(x).float().to(device)
     y = torch.tensor(y).float().to(device)
 
-    w1 = torch.tensor(np.array([[-0.25, 1.0, 1.0, 1.0], [0.25, -1.0, 1.0, 1.0]])).float()
-    w2 = torch.tensor(np.array([[2], [0.5], [0.5, ], [0.0]])).float()
+    if version == 1:
+        # Perfect solution
+        w1 = torch.tensor(
+            np.array([[-0.5, 1.0, 1.0, 1.0], [0.5, -1.0, 1.0, 1.0]])
+        ).float()
+        w2 = torch.tensor(np.array([[1], [0.5], [0.5], [0.0]])).float()
+    elif version == 2:
+        # Perfect solution except unit (D) which has a non-zero outgoing edge
+        w1 = torch.tensor(
+            np.array([[-0.5, 1.0, 1.0, 1.0], [0.5, -1.0, 1.0, 1.0]])
+        ).float()
+        w2 = torch.tensor(np.array([[1], [0.5], [0.5,], [-0.1]])).float()
 
     linear1 = nn.Linear(2, 4, bias=False)
     linear1.weight.data = torch.t(w1).to(device)
@@ -31,7 +45,6 @@ def max_model(device):
 
     model = nn.Sequential(linear1, nn.ReLU(), linear2).to(device)
     return x, y, model
-
 
 
 class TestTorchPruner(TestCase):
@@ -44,14 +57,14 @@ class TestTorchPruner(TestCase):
     def test_max_model(self):
         x, y, model = max_model(self.device)
         y_pred = model(x)
-        np.testing.assert_array_almost_equal(y.detach().cpu().numpy(), y_pred.detach().cpu().numpy())
+        np.testing.assert_array_almost_equal(
+            y.detach().cpu().numpy(), y_pred.detach().cpu().numpy()
+        )
 
     def test_random(self):
         x, y, model = max_model(self.device)
         datagen = torch.utils.data.DataLoader(
-            (x, y),
-            batch_size=1,
-            shuffle=False,
+            dataset=TensorDataset(x, y), batch_size=1, shuffle=False,
         )
         a = RandomAttributionMetric(model, datagen, F.mse_loss, self.device)
 
@@ -62,9 +75,7 @@ class TestTorchPruner(TestCase):
     def test_weight_norm(self):
         x, y, model = max_model(self.device)
         datagen = torch.utils.data.DataLoader(
-            (x, y),
-            batch_size=1,
-            shuffle=False,
+            dataset=TensorDataset(x, y), batch_size=1, shuffle=False,
         )
         a = WeightNormAttributionMetric(model, datagen, F.mse_loss, self.device)
 
@@ -72,16 +83,13 @@ class TestTorchPruner(TestCase):
         attr, rank = result[0]
         self.assertEqual(list(attr.shape), [4])
         self.assertEqual(list(rank.shape), [4])
-        np.testing.assert_array_almost_equal(attr, [0.5, 2, 2, 2])
+        np.testing.assert_array_almost_equal(attr, [1, 2, 2, 2])
 
     def test_apoz(self):
         x, y, model = max_model(self.device)
         datagen = torch.utils.data.DataLoader(
-            (x, y),
-            batch_size=1,
-            shuffle=False,
+            dataset=TensorDataset(x, y), batch_size=1, shuffle=False,
         )
-        print (next(iter(datagen)))
         a = APoZAttributionMetric(model, datagen, F.mse_loss, self.device)
 
         result = a.run([list(model.children())[0]])
@@ -90,4 +98,85 @@ class TestTorchPruner(TestCase):
         self.assertEqual(list(rank.shape), [4])
         np.testing.assert_array_almost_equal(attr, [0.5, 0.5, 1, 1])
 
+    def test_sensitivity(self):
+        x, y, model = max_model(self.device)
+        datagen = torch.utils.data.DataLoader(
+            dataset=TensorDataset(x, y), batch_size=1, shuffle=False,
+        )
+        a = SensitivityAttributionMetric(model, datagen, F.mse_loss, self.device)
 
+        result = a.run([list(model.children())[0]])
+        attr, rank = result[0]
+        self.assertEqual(list(attr.shape), [4])
+        self.assertEqual(list(rank.shape), [4])
+        np.testing.assert_array_almost_equal(attr, [0.0, 0.0, 0.0, 0.0])
+
+    def test_taylor(self):
+        x, y, model = max_model(self.device)
+        datagen = torch.utils.data.DataLoader(
+            dataset=TensorDataset(x, y), batch_size=1, shuffle=False,
+        )
+        a = TaylorAttributionMetric(model, datagen, F.mse_loss, self.device)
+
+        result = a.run([list(model.children())[0]])
+        attr, rank = result[0]
+        self.assertEqual(list(attr.shape), [4])
+        self.assertEqual(list(rank.shape), [4])
+        np.testing.assert_array_almost_equal(attr, [0.0, 0.0, 0.0, 0.0])
+
+    def test_sv(self):
+        x, y, model = max_model(self.device)
+        datagen = torch.utils.data.DataLoader(
+            dataset=TensorDataset(x, y), batch_size=1, shuffle=False,
+        )
+        a = ShapleyAttributionMetric(model, datagen, F.mse_loss, self.device, sv_samples=1000)
+
+        result = a.run([list(model.children())[0]])
+        attr, rank = result[0]
+        self.assertEqual(list(attr.shape), [4])
+        self.assertEqual(list(rank.shape), [4])
+        np.testing.assert_array_almost_equal(attr, [0.37, 0.37, 1.7, 0.], decimal=1)
+
+    def test_sensitivity_2(self):
+        x, y, model = max_model(self.device, version=2)
+        datagen = torch.utils.data.DataLoader(
+            dataset=TensorDataset(x, y), batch_size=1, shuffle=False,
+        )
+        a = SensitivityAttributionMetric(model, datagen, F.mse_loss, self.device)
+
+        result = a.run([list(model.children())[0]])
+        attr, rank = result[0]
+        self.assertEqual(list(attr.shape), [4])
+        self.assertEqual(list(rank.shape), [4])
+        # (A) has double the weight of (B)
+        # (B) is not active for half of the times so must have half gradient than (C) with the same weight
+        # (D) is active as (C) but has a gradient 5 times smaller
+        np.testing.assert_array_almost_equal(attr, [0.2, 0.1, 0.2, 0.04])
+
+    def test_taylor_2(self):
+        x, y, model = max_model(self.device, version=2)
+        datagen = torch.utils.data.DataLoader(
+            dataset=TensorDataset(x, y), batch_size=1, shuffle=False,
+        )
+        a = TaylorAttributionMetric(model, datagen, F.mse_loss, self.device)
+
+        result = a.run([list(model.children())[0]])
+        attr, rank = result[0]
+        self.assertEqual(list(attr.shape), [4])
+        self.assertEqual(list(rank.shape), [4])
+        np.testing.assert_array_almost_equal(attr, [0.1, 0.1, 0.5, 0.1])
+
+    def test_taylor_2_signed(self):
+        x, y, model = max_model(self.device, version=2)
+        datagen = torch.utils.data.DataLoader(
+            dataset=TensorDataset(x, y), batch_size=1, shuffle=False,
+        )
+        a = TaylorAttributionMetric(
+            model, datagen, F.mse_loss, self.device, signed_attribution=True
+        )
+
+        result = a.run([list(model.children())[0]])
+        attr, rank = result[0]
+        self.assertEqual(list(attr.shape), [4])
+        self.assertEqual(list(rank.shape), [4])
+        np.testing.assert_array_almost_equal(attr, [0.1, 0.1, 0.5, -0.1])
