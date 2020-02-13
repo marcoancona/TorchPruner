@@ -11,7 +11,7 @@ SUPPORTED_OUT_PRUNING_MODULES = [nn.Linear, _ConvNd]
 
 class _AttributionMetric(ABC):
     def __init__(self, model, data_generator, criterion, device, reduction="mean"):
-        assert reduction in ["mean", "none", "sum"] or type(reduction).__name__ is 'function', \
+        assert reduction in ["mean", "none", "sum"] or callable(reduction), \
             'Reduction must be a string in ["mean", "none", "sum"] or a function'
         self.model = model
         self.data_gen = data_generator
