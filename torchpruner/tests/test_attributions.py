@@ -166,7 +166,7 @@ class TestTorchPruner(TestCase):
             dataset=TensorDataset(x, y), batch_size=1, shuffle=False,
         )
         a = TaylorAttributionMetric(
-            model, datagen, F.mse_loss, self.device, signed_attribution=True
+            model, datagen, F.mse_loss, self.device, signed=True
         )
 
         result = a.run([list(model.children())[0]])

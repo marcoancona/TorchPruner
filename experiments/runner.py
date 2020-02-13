@@ -130,7 +130,7 @@ elif args.attribution == "sensitivity":
 elif args.attribution == "taylor":
     attr = TaylorAttributionMetric(model, val_loader, loss, device)
 elif args.attribution == "taylor-signed":
-    attr = TaylorAttributionMetric(model, val_loader, loss, device, signed_attribution=True)
+    attr = TaylorAttributionMetric(model, val_loader, loss, device, signed=True)
 elif args.attribution == "sv":
     attr = ShapleyAttributionMetric(model, val_loader, loss, device, sv_samples=5)
 else:
