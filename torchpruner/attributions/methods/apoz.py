@@ -19,7 +19,7 @@ class APoZAttributionMetric(_AttributionMetric):
             handles = []
             for m in modules:
                 handles.append(m.register_forward_hook(self._forward_hook()))
-            self.run_forward()
+            self.run_all_forward()
             for m in modules:
                 attr = m._tp_nonzero_count
                 result.append(self.aggregate_over_samples(attr))

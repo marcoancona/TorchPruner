@@ -21,7 +21,7 @@ class TaylorAttributionMetric(_AttributionMetric):
         for m in modules:
             handles.append(m.register_forward_hook(self._forward_hook()))
             handles.append(m.register_backward_hook(self._backward_hook()))
-        self.run_forward_and_backward()
+        self.run_all_forward_and_backward()
         for m in modules:
             attr = m._tp_taylor
             result.append(self.aggregate_over_samples(attr))

@@ -63,7 +63,7 @@ class ShapleyAttributionMetric(_AttributionMetric):
     def run_module(self, module, samples):
         with torch.no_grad():
             n = module.weight.shape[0]  # output dimension
-            original_loss = self.run_forward(loss_reduction="none")
+            original_loss = self.run_all_forward()
             handle = module.register_forward_hook(self._forward_hook())
 
             sv = np.zeros((original_loss.shape[0], n))
@@ -73,7 +73,7 @@ class ShapleyAttributionMetric(_AttributionMetric):
                 loss = original_loss.detach().clone()
                 for i in np.random.permutation(n):
                     self.mask_indices.append(i)
-                    new_loss = self.run_forward(loss_reduction="none")
+                    new_loss = self.run_all_forward()
                     sv[:, i] += ((new_loss - loss) / samples).squeeze().detach().cpu().numpy()
                     loss = new_loss
 

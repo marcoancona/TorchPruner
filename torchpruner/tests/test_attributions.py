@@ -93,9 +93,8 @@ class TestTorchPruner(TestCase):
         a = APoZAttributionMetric(model, datagen, F.mse_loss, self.device)
 
         result = a.run([list(model.children())[0]])
-        attr, rank = result[0]
+        attr = result[0]
         self.assertEqual(list(attr.shape), [4])
-        self.assertEqual(list(rank.shape), [4])
         np.testing.assert_array_almost_equal(attr, [0.5, 0.5, 1, 1])
 
     def test_sensitivity(self):
@@ -106,9 +105,8 @@ class TestTorchPruner(TestCase):
         a = SensitivityAttributionMetric(model, datagen, F.mse_loss, self.device)
 
         result = a.run([list(model.children())[0]])
-        attr, rank = result[0]
+        attr = result[0]
         self.assertEqual(list(attr.shape), [4])
-        self.assertEqual(list(rank.shape), [4])
         np.testing.assert_array_almost_equal(attr, [0.0, 0.0, 0.0, 0.0])
 
     def test_taylor(self):
@@ -119,9 +117,8 @@ class TestTorchPruner(TestCase):
         a = TaylorAttributionMetric(model, datagen, F.mse_loss, self.device)
 
         result = a.run([list(model.children())[0]])
-        attr, rank = result[0]
+        attr = result[0]
         self.assertEqual(list(attr.shape), [4])
-        self.assertEqual(list(rank.shape), [4])
         np.testing.assert_array_almost_equal(attr, [0.0, 0.0, 0.0, 0.0])
 
     def test_sv(self):
@@ -132,9 +129,8 @@ class TestTorchPruner(TestCase):
         a = ShapleyAttributionMetric(model, datagen, F.mse_loss, self.device, sv_samples=1000)
 
         result = a.run([list(model.children())[0]])
-        attr, rank = result[0]
+        attr = result[0]
         self.assertEqual(list(attr.shape), [4])
-        self.assertEqual(list(rank.shape), [4])
         np.testing.assert_array_almost_equal(attr, [0.37, 0.37, 1.7, 0.], decimal=1)
 
     def test_sensitivity_2(self):
@@ -145,9 +141,8 @@ class TestTorchPruner(TestCase):
         a = SensitivityAttributionMetric(model, datagen, F.mse_loss, self.device)
 
         result = a.run([list(model.children())[0]])
-        attr, rank = result[0]
+        attr = result[0]
         self.assertEqual(list(attr.shape), [4])
-        self.assertEqual(list(rank.shape), [4])
         # (A) has double the weight of (B)
         # (B) is not active for half of the times so must have half gradient than (C) with the same weight
         # (D) is active as (C) but has a gradient 5 times smaller
@@ -161,9 +156,8 @@ class TestTorchPruner(TestCase):
         a = TaylorAttributionMetric(model, datagen, F.mse_loss, self.device)
 
         result = a.run([list(model.children())[0]])
-        attr, rank = result[0]
+        attr = result[0]
         self.assertEqual(list(attr.shape), [4])
-        self.assertEqual(list(rank.shape), [4])
         np.testing.assert_array_almost_equal(attr, [0.1, 0.1, 0.5, 0.1])
 
     def test_taylor_2_signed(self):
@@ -176,7 +170,6 @@ class TestTorchPruner(TestCase):
         )
 
         result = a.run([list(model.children())[0]])
-        attr, rank = result[0]
+        attr = result[0]
         self.assertEqual(list(attr.shape), [4])
-        self.assertEqual(list(rank.shape), [4])
         np.testing.assert_array_almost_equal(attr, [0.1, 0.1, 0.5, -0.1])
