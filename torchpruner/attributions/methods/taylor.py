@@ -10,8 +10,8 @@ class TaylorAttributionMetric(_AttributionMetric):
     Molchanov et al., Pruning convolutional neural networks for resource efficient inference
     """
 
-    def __init__(self, model, data_generator, criterion, device, signed=False):
-        super().__init__(model, data_generator, criterion, device)
+    def __init__(self, *args, signed=False, **kwargs):
+        super().__init__(*args, **kwargs)
         self.signed = signed
 
     def run(self, modules):

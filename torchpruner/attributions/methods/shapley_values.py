@@ -9,8 +9,8 @@ class ShapleyAttributionMetric(_AttributionMetric):
     Compute attributions as Shapley values
     """
 
-    def __init__(self, model, data_generator, criterion, device, sv_samples=5):
-        super().__init__(model, data_generator, criterion, device)
+    def __init__(self, *args, sv_samples=5, **kwargs):
+        super().__init__(*args, **kwargs)
         self.samples = sv_samples
         self.mask_indices = []
 
