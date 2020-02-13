@@ -10,7 +10,7 @@ SUPPORTED_OUT_PRUNING_MODULES = [nn.Linear, _ConvNd]
 
 
 class Pruner:
-    def __init__(self, model, device, input_size):
+    def __init__(self, model, input_size, device):
         self.model = model
         self.device = device
         self.input_size = input_size
@@ -27,16 +27,18 @@ class Pruner:
 
         # 2. Get all potentially prunable modules, if not provided by the user
         if cascading_modules is None:
+            print ("Warning: no cascading modules defined")
             cascading_modules = []
-            for m in self.model.modules():
-                if (
-                    len(list(m.children())) == 0
-                    and m != module
-                    and any([isinstance(m, t) for t in SUPPORTED_IN_PRUNING_MODULES])
-                ):
-                    cascading_modules.append(m)
+            # cascading_modules = []
+            # for m in self.model.modules():
+            #     if (
+            #         len(list(m.children())) == 0
+            #         and m != module
+            #         and any([isinstance(m, t) for t in SUPPORTED_IN_PRUNING_MODULES])
+            #     ):
+            #         cascading_modules.append(m)
 
-        logging.info(f"Considering cascading modules {cascading_modules}")
+        print(f"Considering cascading modules {cascading_modules}")
 
         # 3. Install a nan listener on all modules
         handles = []
@@ -80,6 +82,7 @@ class Pruner:
                 [isinstance(module, t) for t in SUPPORTED_IN_PRUNING_MODULES]
             ), f"Cannot prune incoming activations on this module. Only the following are supported {SUPPORTED_IN_PRUNING_MODULES}"
 
+        print(f"Pruning {len(indices)} units from {module} ({direction})")
         if direction is "out":
             self.prune_parameter(module, "weight", indices, axis=0)
             self.prune_parameter(module, "bias", indices, axis=0)

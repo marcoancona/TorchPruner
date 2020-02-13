@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 from ..attributions import _AttributionMetric
 
@@ -13,14 +14,19 @@ class APoZAttributionMetric(_AttributionMetric):
 
     def run(self, modules):
         super().run(modules)
-        result = []
-        for m in modules:
-            m.register_forward_hook(self._forward_hook())
-        self.run_forward()
-        for m in modules:
-            attr = m._tp_nonzero_count.detach().cpu().numpy()
-            result.append(self.aggregate_over_samples(attr))
-        return result
+        with torch.no_grad():
+            result = []
+            handles = []
+            for m in modules:
+                handles.append(m.register_forward_hook(self._forward_hook()))
+            self.run_forward()
+            for m in modules:
+                attr = m._tp_nonzero_count
+                result.append(self.aggregate_over_samples(attr))
+                delattr(m, "_tp_nonzero_count")
+            for h in handles:
+                h.remove()
+            return result
 
     @staticmethod
     def _forward_hook():
@@ -29,7 +35,8 @@ class APoZAttributionMetric(_AttributionMetric):
             while len(nonzero_count.shape) > 2:
                 nonzero_count = nonzero_count.sum(-1)
             if not hasattr(module, "_tp_nonzero_count"):
-                module._tp_nonzero_count = nonzero_count
+                module._tp_nonzero_count = nonzero_count.detach().cpu().numpy()
             else:
-                module._tp_nonzero_count = torch.cat((module._tp_nonzero_count, nonzero_count), 0)
+                module._tp_nonzero_count = np.concatenate(
+                    (module._tp_nonzero_count, nonzero_count.detach().cpu().numpy()), 0)
         return _hook

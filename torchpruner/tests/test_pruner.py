@@ -134,22 +134,8 @@ class TestTorchPruner(TestCase):
         self.assertEqual(list(next_module.weight.data.shape), [1, 1])
         self.assertEqual(list(model(x).shape), list(y.shape))
 
-    def test_prune_model_linear_auto_detect(self):
-        (x, y), model = simple_model(self.device)
-        p = Pruner(model, input_size=(3,), device=self.device)
 
-        module = list(model.children())[0]
-        next_module = list(model.children())[2]
-        pruning_indices = [0]
-
-        p.prune_model(module, pruning_indices)  # <- auto detect cascading modules
-
-        # Pruning indices in input to next module should correspond
-        self.assertEqual(list(module.weight.data.shape), [1, 3])
-        self.assertEqual(list(next_module.weight.data.shape), [1, 1])
-        self.assertEqual(list(model(x).shape), list(y.shape))
-
-    def test_prune_model_linear_bn_auto_detect(self):
+    def test_prune_model_linear_bn(self):
         (x, y), _ = simple_model(self.device)
         model = nn.Sequential(nn.Linear(3, 2), nn.BatchNorm1d(2), nn.Linear(2, 1)).to(
             self.device
@@ -161,7 +147,7 @@ class TestTorchPruner(TestCase):
         lin_module = list(model.children())[2]
         pruning_indices = [0]
 
-        p.prune_model(module, pruning_indices)  # <- auto detect cascading modules
+        p.prune_model(module, pruning_indices, [bn_module, lin_module])
 
         # Pruning indices in input to next module should correspond
         self.assertEqual(list(module.weight.data.shape), [1, 3])

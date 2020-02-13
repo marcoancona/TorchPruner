@@ -1,4 +1,4 @@
-import torch
+import numpy as np
 from ..attributions import _AttributionMetric
 
 
@@ -13,12 +13,16 @@ class SensitivityAttributionMetric(_AttributionMetric):
     def run(self, modules):
         super().run(modules)
         result = []
+        handles = []
         for m in modules:
-            m.register_backward_hook(self._backward_hook())
+            handles.append(m.register_backward_hook(self._backward_hook()))
         self.run_forward_and_backward()
         for m in modules:
-            attr = m._tp_gradient.detach().cpu().numpy()
+            attr = m._tp_gradient
             result.append(self.aggregate_over_samples(attr))
+            delattr(m, "_tp_gradient")
+        for h in handles:
+            h.remove()
         return result
 
     @staticmethod
@@ -28,7 +32,7 @@ class SensitivityAttributionMetric(_AttributionMetric):
             if len(grad.shape) > 2:
                 grad = grad.flatten(2).sum(-1)
             if not hasattr(module, "_tp_gradient"):
-                module._tp_gradient = grad
+                module._tp_gradient = grad.detach().cpu().numpy()
             else:
-                module._tp_gradient = torch.cat((module._tp_gradient, grad), 0)
+                module._tp_gradient = np.concatenate((module._tp_gradient, grad.detach().cpu().numpy()), 0)
         return _hook

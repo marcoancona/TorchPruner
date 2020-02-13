@@ -1,4 +1,4 @@
-import torch
+import numpy as np
 from ..attributions import _AttributionMetric
 
 
@@ -17,13 +17,17 @@ class TaylorAttributionMetric(_AttributionMetric):
     def run(self, modules):
         super().run(modules)
         result = []
+        handles = []
         for m in modules:
-            m.register_forward_hook(self._forward_hook())
-            m.register_backward_hook(self._backward_hook())
+            handles.append(m.register_forward_hook(self._forward_hook()))
+            handles.append(m.register_backward_hook(self._backward_hook()))
         self.run_forward_and_backward()
         for m in modules:
-            attr = m._tp_taylor.detach().cpu().numpy()
+            attr = m._tp_taylor
             result.append(self.aggregate_over_samples(attr))
+            delattr(m, "_tp_taylor")
+        for h in handles:
+            h.remove()
         return result
 
     @staticmethod
@@ -40,9 +44,9 @@ class TaylorAttributionMetric(_AttributionMetric):
             if self.signed is False:
                 taylor = taylor.abs()
             if not hasattr(module, "_tp_taylor"):
-                module._tp_taylor = taylor
+                module._tp_taylor = taylor.detach().cpu().numpy()
             else:
-                module._tp_taylor = torch.cat((module._tp_taylor, taylor), 0)
+                module._tp_taylor = np.concatenate((module._tp_taylor, taylor.detach().cpu().numpy()), 0)
         return _hook
 
 
