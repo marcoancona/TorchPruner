@@ -9,5 +9,5 @@ class RandomAttributionMetric(_AttributionMetric):
         for m in modules:
             n = m.weight.shape[0]  # output dimension
             attr = np.random.random((n,))
-            result.append((attr, np.argsort(attr)))
+            result.append(attr)
         return result

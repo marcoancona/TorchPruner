@@ -18,5 +18,5 @@ class WeightNormAttributionMetric(_AttributionMetric):
             attr = np.abs(attr)
             while len(attr.shape) > 1:
                 attr = attr.sum(-1)
-            result.append((attr, np.argsort(attr)))
+            result.append(attr)
         return result

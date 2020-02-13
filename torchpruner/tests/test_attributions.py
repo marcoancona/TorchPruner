@@ -68,9 +68,8 @@ class TestTorchPruner(TestCase):
         )
         a = RandomAttributionMetric(model, datagen, F.mse_loss, self.device)
 
-        result = a.run([list(model.children())[0]])
-        self.assertEqual(list(result[0][0].shape), [4])
-        self.assertEqual(list(result[0][1].shape), [4])
+        attr = a.run([list(model.children())[0]])
+        self.assertEqual(list(attr[0].shape), [4])
 
     def test_weight_norm(self):
         x, y, model = max_model(self.device)
@@ -80,9 +79,8 @@ class TestTorchPruner(TestCase):
         a = WeightNormAttributionMetric(model, datagen, F.mse_loss, self.device)
 
         result = a.run([list(model.children())[0]])
-        attr, rank = result[0]
+        attr = result[0]
         self.assertEqual(list(attr.shape), [4])
-        self.assertEqual(list(rank.shape), [4])
         np.testing.assert_array_almost_equal(attr, [1, 2, 2, 2])
 
     def test_apoz(self):
