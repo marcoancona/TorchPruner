@@ -15,8 +15,7 @@ class ShapleyAttributionMetric(_AttributionMetric):
         self.mask_indices = []
 
     def run(self, module, sv_samples=None, **kwargs):
-        super().run(module)
-        module = self.find_evaluation_module(module, **kwargs)
+        module = super().run(module, **kwargs)
         sv_samples = sv_samples if sv_samples is not None else self.samples
         if hasattr(self.model, "forward_partial"):
             # print (f"--> can run with partials")

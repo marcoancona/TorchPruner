@@ -12,6 +12,25 @@ SUPPORTED_OUT_PRUNING_MODULES = [nn.Linear, _ConvNd]
 ACTIVATIONS = [ReLU, ReLU6, RReLU, LeakyReLU, Sigmoid, Softplus, Tanh]
 
 
+def map_best_evaluation_module(model, module):
+    modules = list(model.modules())
+    try:
+        current_idx = modules.index(module)
+        eval_module = module
+        for next_module in modules[current_idx+1:]:
+            if isinstance(next_module, _BatchNorm):
+                print(f"BatchNorm detected: shifting evaluation after {next_module}")
+                eval_module = next_module
+            elif any([isinstance(next_module, t) for t in ACTIVATIONS]):
+                print(f"Activation detected: shifting evaluation after {next_module}")
+                eval_module = next_module
+            else:
+                return eval_module
+    except ValueError:
+        logging.error("Provided module is not in model")
+    return module
+
+
 class _AttributionMetric(ABC):
     def __init__(self, model, data_generator, criterion, device, reduction="mean"):
         assert reduction in ["mean", "none", "sum"] or callable(reduction), \
@@ -23,29 +42,18 @@ class _AttributionMetric(ABC):
         self.reduction = reduction
 
     @abstractmethod
-    def run(self, module):
+    def run(self, module, **kwargs):
         assert any(
             [isinstance(module, t) for t in SUPPORTED_OUT_PRUNING_MODULES]
         ), f"Attributions can be computed only for the following modules {SUPPORTED_OUT_PRUNING_MODULES}"
+        return self.find_evaluation_module(module, **kwargs)
 
     def find_evaluation_module(self, module, find_best_evaluation_module=False):
         if find_best_evaluation_module is True:
-            modules = list(self.model.modules())
-            try:
-                current_idx = modules.index(module)
-                eval_module = module
-                for next_module in modules[current_idx+1:]:
-                    if isinstance(next_module, _BatchNorm):
-                        print(f"BatchNorm detected: shifting evaluation after {next_module}")
-                        eval_module = next_module
-                    elif any([isinstance(next_module, t) for t in ACTIVATIONS]):
-                        print(f"Activation detected: shifting evaluation after {next_module}")
-                        eval_module = next_module
-                    else:
-                        return eval_module
-            except ValueError:
-                logging.error("Provided module is not in model")
-        return module
+            return map_best_evaluation_module(self.model, module)
+        else:
+            return module
+
 
     def run_all_forward(self):
         """
@@ -108,3 +116,4 @@ class _AttributionMetric(ABC):
             return attributions
         else:  # a function
             return self.reduction(attributions)
+

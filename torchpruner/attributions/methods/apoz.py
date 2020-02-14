@@ -13,8 +13,7 @@ class APoZAttributionMetric(_AttributionMetric):
     """
 
     def run(self, module, **kwargs):
-        super().run(module)
-        module = self.find_evaluation_module(module, **kwargs)
+        module = super().run(module, **kwargs)
         with torch.no_grad():
             handles = [module.register_forward_hook(self._forward_hook())]
             self.run_all_forward()
@@ -24,6 +23,7 @@ class APoZAttributionMetric(_AttributionMetric):
             for h in handles:
                 h.remove()
             return result
+
 
     @staticmethod
     def _forward_hook():

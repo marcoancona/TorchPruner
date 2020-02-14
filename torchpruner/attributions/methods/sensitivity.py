@@ -11,8 +11,7 @@ class SensitivityAttributionMetric(_AttributionMetric):
     """
 
     def run(self, module, **kwargs):
-        super().run(module)
-        module = self.find_evaluation_module(module, **kwargs)
+        module = super().run(module, **kwargs)
         handles = [module.register_backward_hook(self._backward_hook())]
         self.run_all_forward_and_backward()
         attr = module._tp_gradient
