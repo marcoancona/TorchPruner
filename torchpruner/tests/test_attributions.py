@@ -165,7 +165,7 @@ class TestTorchPruner(TestCase):
         self.assertEqual(list(attr.shape), [4])
         np.testing.assert_array_almost_equal(attr, [0.1, 0.1, 0.5, -0.1])
 
-    def test_find_best_pruning_module(self):
+    def test_find_best_evaluation_module(self):
         """
         Given a Linear of Conv layer, we want to compute attributions *after* any BatchNorm
         or activation layers that might follow.
@@ -178,6 +178,43 @@ class TestTorchPruner(TestCase):
         model = nn.Sequential(nn.Linear(3, 2), nn.BatchNorm1d(2), nn.ReLU(), nn.Linear(2, 1)).to(
             self.device
         )
-        a = TaylorAttributionMetric(model, datagen, F.mse_loss, self.device)
-        eval_module = a.find_evaluation_module(list(model.children())[0], find_best_evaluation_module=True)
-        self.assertEqual(eval_module, list(model.children())[2])
+
+        for A in [TaylorAttributionMetric, SensitivityAttributionMetric, ShapleyAttributionMetric, APoZAttributionMetric]:
+            # For these methods, should skip BN and ReLU
+            a = A(model, datagen, F.mse_loss, self.device)
+            eval_module = a.find_evaluation_module(list(model.children())[0], find_best_evaluation_module=True)
+            self.assertEqual(eval_module, list(model.children())[2])
+
+        for A in [WeightNormAttributionMetric, RandomAttributionMetric]:
+            # For these methods, should NOT skip BN and ReLU
+            a = A(model, datagen, F.mse_loss, self.device)
+            eval_module = a.find_evaluation_module(list(model.children())[0], find_best_evaluation_module=True)
+            self.assertEqual(eval_module, list(model.children())[0])
+
+    def test_run_all_with_find_best_evaluation_module(self):
+        x, y, model = max_model(self.device)
+        datagen = torch.utils.data.DataLoader(
+            dataset=TensorDataset(x, y), batch_size=1, shuffle=False,
+        )
+
+        for A in [TaylorAttributionMetric, SensitivityAttributionMetric,
+                  APoZAttributionMetric, WeightNormAttributionMetric]:
+            # For these methods, attributions before and after a ReLU should be the same
+            # (Also for SV and Random, but these are not deterministic)
+            a = A(model, datagen, F.mse_loss, self.device)
+            attr = a.run(list(model.children())[0], find_best_evaluation_module=False)
+            attr_best = a.run(list(model.children())[0], find_best_evaluation_module=True)
+            np.testing.assert_array_almost_equal(attr, attr_best)
+
+    def test_run_all_with_find_best_evaluation_module_2(self):
+        x, y, model = max_model(self.device)
+        datagen = torch.utils.data.DataLoader(
+            dataset=TensorDataset(x, y), batch_size=1, shuffle=False,
+        )
+
+        for A in [TaylorAttributionMetric, SensitivityAttributionMetric,
+                  APoZAttributionMetric, WeightNormAttributionMetric, RandomAttributionMetric, ShapleyAttributionMetric]:
+            # Check if all methods run with find_best_evaluation_module = True
+            a = A(model, datagen, F.mse_loss, self.device)
+            attr_best = a.run(list(model.children())[0], find_best_evaluation_module=True)
+            self.assertEqual(list(attr_best.shape), [4])

@@ -25,10 +25,9 @@ class ShapleyAttributionMetric(_AttributionMetric):
         return result
 
     def run_module_with_partial(self, module, samples):
-        n = module.weight.shape[0]  # output dimension
         d = len(self.data_gen.dataset)
-        sv = np.zeros((d, n))
-        permutations = [np.random.permutation(n) for _ in range(samples)]
+        sv = None
+        permutations = None
         c = 0
 
         with torch.no_grad():
@@ -36,6 +35,12 @@ class ShapleyAttributionMetric(_AttributionMetric):
                 x, y = x.to(self.device), y.to(self.device)
                 original_z, _ = self.run_forward_partial(x, to_module=module)
                 _, original_loss = self.run_forward_partial(original_z, y_true=y, from_module=module)
+                n = original_z.shape[1]  # prunable dimension
+                if permutations is None:
+                    # Keep same permutations for all batches
+                    permutations = [np.random.permutation(n) for _ in range(samples)]
+                if sv is None:
+                    sv = np.zeros((d, n))
 
                 for j in range(samples):
                     # print (f"Sample {j}")
@@ -58,11 +63,12 @@ class ShapleyAttributionMetric(_AttributionMetric):
 
     def run_module(self, module, samples):
         with torch.no_grad():
-            n = module.weight.shape[0]  # output dimension
-            original_loss = self.run_all_forward()
+            self.mask_indices = []
             handle = module.register_forward_hook(self._forward_hook())
-
+            original_loss = self.run_all_forward()
+            n = module._tp_prune_dim  # output dimension
             sv = np.zeros((original_loss.shape[0], n))
+
             for j in range(samples):
                 # print (f"Sample {j}")
                 self.mask_indices = []
@@ -81,8 +87,9 @@ class ShapleyAttributionMetric(_AttributionMetric):
 
     def _forward_hook(self):
         def _hook(module, _, output):
+            module._tp_prune_dim = output.shape[1]
             return output.index_fill_(
-                1, torch.tensor(self.mask_indices).to(self.device), 0.0,
+                1, torch.tensor(self.mask_indices).long().to(self.device), 0.0,
             )
 
         return _hook
