@@ -47,6 +47,7 @@ def max_model(device, version=1):
     return x, y, model
 
 
+
 class TestTorchPruner(TestCase):
     def setUp(self):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -163,3 +164,20 @@ class TestTorchPruner(TestCase):
         attr = a.run(list(model.children())[0])
         self.assertEqual(list(attr.shape), [4])
         np.testing.assert_array_almost_equal(attr, [0.1, 0.1, 0.5, -0.1])
+
+    def test_find_best_pruning_module(self):
+        """
+        Given a Linear of Conv layer, we want to compute attributions *after* any BatchNorm
+        or activation layers that might follow.
+        """
+        x, y, _ = max_model(self.device, version=2)
+        datagen = torch.utils.data.DataLoader(
+            dataset=TensorDataset(x, y), batch_size=1, shuffle=False,
+        )
+        # Define model with BatchNorm and ReLU
+        model = nn.Sequential(nn.Linear(3, 2), nn.BatchNorm1d(2), nn.ReLU(), nn.Linear(2, 1)).to(
+            self.device
+        )
+        a = TaylorAttributionMetric(model, datagen, F.mse_loss, self.device)
+        eval_module = a.find_evaluation_module(list(model.children())[0], find_best_evaluation_module=True)
+        self.assertEqual(eval_module, list(model.children())[2])

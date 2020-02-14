@@ -10,8 +10,9 @@ class SensitivityAttributionMetric(_AttributionMetric):
     Mittal et al., Studying the plasticity in deep convolutional neural networks using random pruning
     """
 
-    def run(self, module):
+    def run(self, module, **kwargs):
         super().run(module)
+        module = self.find_evaluation_module(module, **kwargs)
         handles = [module.register_backward_hook(self._backward_hook())]
         self.run_all_forward_and_backward()
         attr = module._tp_gradient
