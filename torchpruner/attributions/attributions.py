@@ -20,11 +20,10 @@ class _AttributionMetric(ABC):
         self.reduction = reduction
 
     @abstractmethod
-    def run(self, modules):
-        for m in modules:
-            assert any(
-                [isinstance(m, t) for t in SUPPORTED_OUT_PRUNING_MODULES]
-            ), f"Attributions can be computed only for the following modules {SUPPORTED_OUT_PRUNING_MODULES}"
+    def run(self, module):
+        assert any(
+            [isinstance(module, t) for t in SUPPORTED_OUT_PRUNING_MODULES]
+        ), f"Attributions can be computed only for the following modules {SUPPORTED_OUT_PRUNING_MODULES}"
 
     def run_all_forward(self):
         """

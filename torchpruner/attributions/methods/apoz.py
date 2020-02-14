@@ -12,18 +12,14 @@ class APoZAttributionMetric(_AttributionMetric):
     towards  efficient  deep  architectures
     """
 
-    def run(self, modules):
-        super().run(modules)
+    def run(self, module):
+        super().run(module)
         with torch.no_grad():
-            result = []
-            handles = []
-            for m in modules:
-                handles.append(m.register_forward_hook(self._forward_hook()))
+            handles = [module.register_forward_hook(self._forward_hook())]
             self.run_all_forward()
-            for m in modules:
-                attr = m._tp_nonzero_count
-                result.append(self.aggregate_over_samples(attr))
-                delattr(m, "_tp_nonzero_count")
+            attr = module._tp_nonzero_count
+            result = self.aggregate_over_samples(attr)
+            delattr(module, "_tp_nonzero_count")
             for h in handles:
                 h.remove()
             return result

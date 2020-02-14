@@ -3,11 +3,8 @@ from ..attributions import _AttributionMetric
 
 
 class RandomAttributionMetric(_AttributionMetric):
-    def run(self, modules):
-        super().run(modules)
-        result = []
-        for m in modules:
-            n = m.weight.shape[0]  # output dimension
-            attr = np.random.random((n,))
-            result.append(attr)
-        return result
+    def run(self, module):
+        super().run(module)
+        n = module.weight.shape[0]  # output dimension
+        return np.random.random((n,))
+

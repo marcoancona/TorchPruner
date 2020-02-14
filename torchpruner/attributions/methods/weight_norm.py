@@ -10,13 +10,10 @@ class WeightNormAttributionMetric(_AttributionMetric):
     Li et al., Pruning filters for efficient convnets, ICLR 2017
     """
 
-    def run(self, modules):
-        super().run(modules)
-        result = []
-        for m in modules:
-            attr = m.weight.detach().cpu().numpy()
-            attr = np.abs(attr)
-            while len(attr.shape) > 1:
-                attr = attr.sum(-1)
-            result.append(attr)
-        return result
+    def run(self, module):
+        super().run(module)
+        attr = module.weight.detach().cpu().numpy()
+        attr = np.abs(attr)
+        while len(attr.shape) > 1:
+            attr = attr.sum(-1)
+        return attr
