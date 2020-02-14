@@ -12,7 +12,7 @@ SUPPORTED_OUT_PRUNING_MODULES = [nn.Linear, _ConvNd]
 ACTIVATIONS = [ReLU, ReLU6, RReLU, LeakyReLU, Sigmoid, Softplus, Tanh]
 
 
-def map_best_evaluation_module(model, module):
+def find_best_module_for_attributions(model, module):
     modules = list(model.modules())
     try:
         current_idx = modules.index(module)
@@ -50,7 +50,7 @@ class _AttributionMetric(ABC):
 
     def find_evaluation_module(self, module, find_best_evaluation_module=False):
         if find_best_evaluation_module is True:
-            return map_best_evaluation_module(self.model, module)
+            return find_best_module_for_attributions(self.model, module)
         else:
             return module
 
