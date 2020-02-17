@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 from torch.nn.modules.conv import _ConvNd
 from torch.nn.modules.batchnorm import _BatchNorm
+from torch.nn.modules.dropout import _DropoutNd
 from torchpruner.pruner.opt_pruner import OptimizerPruner
 import logging
 
@@ -19,7 +20,6 @@ class Pruner:
 
     def prune_model(self, module, indices, cascading_modules=None):
         """
-
         :param pruning_graph:
         :return:
         """
@@ -31,16 +31,6 @@ class Pruner:
         if cascading_modules is None:
             print ("Warning: no cascading modules defined")
             cascading_modules = []
-            # cascading_modules = []
-            # for m in self.model.modules():
-            #     if (
-            #         len(list(m.children())) == 0
-            #         and m != module
-            #         and any([isinstance(m, t) for t in SUPPORTED_IN_PRUNING_MODULES])
-            #     ):
-            #         cascading_modules.append(m)
-
-        print(f"Considering cascading modules {cascading_modules}")
 
         # 3. Install a nan listener on all modules
         handles = []
@@ -57,14 +47,16 @@ class Pruner:
         for next_module in cascading_modules:
             if hasattr(next_module, "_nan_indices"):
                 self.prune_module(
-                    next_module, getattr(next_module, "_nan_indices"), direction="in"
+                    next_module, getattr(next_module, "_nan_indices"),
+                    direction="in",
+                    original_len=getattr(next_module, "_activation_len")
                 )
                 delattr(next_module, "_nan_indices")
 
         # 5. Finally, prune module
         self.prune_module(module, indices, direction="out")
 
-    def prune_module(self, module, indices, direction="out"):
+    def prune_module(self, module, indices, direction="out", original_len=None):
         """
         Prune a module parameters. This method provides an higher level API for
         prune_parameter with understanding of the module class and its corresponding
@@ -96,6 +88,8 @@ class Pruner:
                 self.prune_parameter(module, "bias", indices, axis=0)
                 self.prune_parameter(module, "running_mean", indices, axis=0)
                 self.prune_parameter(module, "running_var", indices, axis=0)
+            elif isinstance(module, _DropoutNd):
+                self._adjust_dropout(module, indices, original_len)
 
     def prune_parameter(self, module, parameter_name, indices, axis=0):
         """
@@ -120,7 +114,7 @@ class Pruner:
             if self.optimizer is not None:
                 OptimizerPruner.prune(self.optimizer, param, axis, keep_indices, self.device)
 
-    def _adjust_dropout(self, module, pruning_ratio):
+    def _adjust_dropout(self, module, indices, original_len):
         """
         Adjust dropout ratio, such that the average number of active units will
         be the same after pruning
@@ -128,7 +122,9 @@ class Pruner:
         :param pruning_ratio:
         :return:
         """
-        module.p *= 1.0 - pruning_ratio
+        if original_len is None:
+            raise RuntimeError("Cannot adjust Dropout rate with 'original_len=None'")
+        module.p *= (1.0 - len(indices) / original_len)
 
     def _nanify_hook(self, indices):
         """
@@ -156,6 +152,9 @@ class Pruner:
 
         def _hook(module, input, __):
             input = input[0]
+            setattr(
+                module, "_activation_len", float(input.shape[1])
+            )
             while len(input.shape) > 2:
                 input = input.sum(-1)
             input = input.sum(0).flatten(0)
@@ -164,9 +163,8 @@ class Pruner:
             )
             if len(indices) > 0:
                 setattr(
-                    module, "_nan_indices", indices,
+                    module, "_nan_indices", indices
                 )
-
         return _hook
 
     def _run_forward(

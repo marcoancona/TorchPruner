@@ -160,6 +160,23 @@ class TestTorchPruner(TestCase):
         self.assertEqual(list(model(x).shape), list(y.shape))
 
 
+    def test_prune_model_linear_dropout(self):
+        (x, y), _ = simple_model(self.device)
+        model = nn.Sequential(nn.Linear(3, 5), nn.Dropout(0.5), nn.Linear(5, 1)).to(
+            self.device
+        )
+        p = Pruner(model, input_size=(3,), device=self.device)
+
+        module = list(model.children())[0]
+        dropout_module = list(model.children())[1]
+        lin_module = list(model.children())[2]
+        pruning_indices = [0]
+
+        self.assertEqual(dropout_module.p, 0.5)
+        p.prune_model(module, pruning_indices, [dropout_module, lin_module])
+        self.assertEqual(dropout_module.p, 0.5 * 4/5)
+
+
 
     def test_prune_model_with_sgd(self):
         (x, y), _ = simple_model(self.device)

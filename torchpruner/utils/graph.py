@@ -42,11 +42,11 @@ def get_vgg_pruning_graph(vgg):
     :param vgg: PyTorch vgg model
     :return:
     """
-    modules = list(vgg.features.children()) + list(vgg.classifier.children())
+    # modules = list(vgg.modules())
     pruning = []
     current = None
 
-    for module in modules:
+    for module in vgg.modules():
         if any([isinstance(module, c) for c in [nn.Linear, nn.Conv2d]]):
             if current is not None:
                 pruning[-1][1].append(module)
