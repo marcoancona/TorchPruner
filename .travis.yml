@@ -4,8 +4,8 @@ matrix:
         - python: 3.6
 
 install:
-  # install PyTorch
-  - pip install torch --upgrade --upgrade-strategy only-if-needed
+  # install PyTorch (CPU)
+  - pip install torch==1.4.0+cpu torchvision==0.5.0+cpu -f https://download.pytorch.org/whl/torch_stable.html
   - pip install -e .
 
 # command to run tests
