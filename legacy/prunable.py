@@ -6,7 +6,7 @@ import json
 from torchsummary import summary
 import matplotlib.pyplot as plt
 from experiments.utils import log_dict
-from shapley_pruning.attributions import attributions_for_module
+from legacy.attributions import attributions_for_module
 
 
 class ContinuousPruner:

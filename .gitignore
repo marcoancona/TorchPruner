@@ -128,17 +128,15 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-data/
-
 \.idea/
-
+legacy/**/*
+experiments/data/*
+!experiments/data/.gitkeep
+#experiments/results/*
+#!experiments/results/.gitkeep
 *.pt
-
 *.pruner
-
 *.csv
-
 *.pdf
 *.hdf5
-
 *.p

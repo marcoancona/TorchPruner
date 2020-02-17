@@ -251,7 +251,7 @@ def get_dataset_and_loaders(use_cuda=torch.cuda.is_available()):
 def test():
     from torchsummary import summary
     from thop import profile
-    from shapley_pruning.prunable import ContinuousPruner
+    from legacy.prunable import ContinuousPruner
 
     model, name = get_model_with_name()
     dataset, train_loader, validation_loader, test_loader = get_dataset_and_loaders(use_cuda=False)
