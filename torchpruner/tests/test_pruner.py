@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from torchpruner import Pruner
+from torchpruner.pruner import Pruner
 
 
 def simple_model(device):

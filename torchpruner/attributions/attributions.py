@@ -2,33 +2,14 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.nn.modules.conv import _ConvNd
-from torch.nn.modules.batchnorm import _BatchNorm
 from torch.nn.modules.activation import ReLU, ReLU6, RReLU, LeakyReLU, Sigmoid, Softplus, Tanh
+from ..utils import find_best_module_for_attributions
 import logging
 
 from abc import ABC, abstractmethod
 
 SUPPORTED_OUT_PRUNING_MODULES = [nn.Linear, _ConvNd]
 ACTIVATIONS = [ReLU, ReLU6, RReLU, LeakyReLU, Sigmoid, Softplus, Tanh]
-
-
-def find_best_module_for_attributions(model, module):
-    modules = list(model.modules())
-    try:
-        current_idx = modules.index(module)
-        eval_module = module
-        for next_module in modules[current_idx+1:]:
-            if isinstance(next_module, _BatchNorm):
-                print(f"BatchNorm detected: shifting evaluation after {next_module}")
-                eval_module = next_module
-            elif any([isinstance(next_module, t) for t in ACTIVATIONS]):
-                print(f"Activation detected: shifting evaluation after {next_module}")
-                eval_module = next_module
-            else:
-                return eval_module
-    except ValueError:
-        logging.error("Provided module is not in model")
-    return module
 
 
 class _AttributionMetric(ABC):

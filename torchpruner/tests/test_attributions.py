@@ -8,7 +8,7 @@ from torch.utils.data import TensorDataset
 import torch.nn.functional as F
 
 
-from torchpruner import (
+from torchpruner.attributions import (
     WeightNormAttributionMetric,
     RandomAttributionMetric,
     SensitivityAttributionMetric,
