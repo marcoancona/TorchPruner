@@ -94,7 +94,6 @@ def prunable_vgg16(num_classes=10):
     model._initialize_weights()
     VGG.forward = vgg_forward_partial
     VGG.forward_partial = vgg_forward_partial
-    VGG.get_pruning_graph = get_pruning_graph
     return model
 
 
