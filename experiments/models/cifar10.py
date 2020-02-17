@@ -13,7 +13,7 @@ class Net(nn.Module):
 
         self.fc = nn.Sequential(
             nn.Flatten(1),
-            nn.Linear(32*32*3, 2024),
+            nn.Linear(32 * 32 * 3, 2024),
             nn.LeakyReLU(),
             nn.Linear(2024, 2024),
             nn.LeakyReLU(),
@@ -59,26 +59,6 @@ def vgg_forward_partial(self, x, to_module=None, from_module=None):
     return x
 
 
-def get_pruning_graph(self):
-    modules = list(self.features.children()) + list(self.classifier.children())
-    pruning = []
-    current = None
-
-    for module in modules:
-        if any([isinstance(module, c) for c in [nn.Linear, nn.Conv2d]]):
-            if current is not None:
-                pruning[-1][1].append(module)
-                pruning[-1][1].reverse()
-            current = module
-            pruning.append((module, []))
-        elif (
-            any([isinstance(module, c) for c in [nn.BatchNorm2d, nn.Dropout]])
-            and current is not None
-        ):
-            pruning[-1][1].append(module)
-    return pruning[::-1][1:]
-
-
 def prunable_vgg16(num_classes=10):
     """Constructs a VGG-11 model for CIFAR dataset"""
     model = vgg16_bn(num_classes=num_classes)
@@ -97,20 +77,6 @@ def prunable_vgg16(num_classes=10):
     return model
 
 
-class FCNet(nn.Module):
-    def __init__(self):
-        super(FCNet, self).__init__()
-
-        self.fc = nn.Sequential(
-            nn.Flatten(1),
-            nn.Linear(32 * 32 * 3, 2024),
-            nn.LeakyReLU(),
-            nn.Linear(2024, 2024),
-            nn.LeakyReLU(),
-            nn.Linear(2024, 10),
-        )
-
-
 def get_vgg_model_with_name():
     model = prunable_vgg16()
     return model, "CIFAR10-VGG16"
@@ -127,7 +93,9 @@ def loss(output, target, reduction="mean"):
 
 def get_optimizer_for_model(model):
     opt = optim.SGD(model.parameters(), lr=0.05, momentum=0.9, weight_decay=5e-4)
-    scheduler = optim.lr_scheduler.MultiStepLR(opt, milestones=[30, 60, 90, 120, 150], gamma=0.5)
+    scheduler = optim.lr_scheduler.MultiStepLR(
+        opt, milestones=[30, 60, 90, 120, 150], gamma=0.5
+    )
     return opt, scheduler
 
 
@@ -157,8 +125,12 @@ def get_dataset(use_cuda=torch.cuda.is_available()):
     )
     return train_set, test_set
 
+
 def get_dataset_and_loaders(
-    use_cuda=torch.cuda.is_available(), val_split=1000, val_from_test=False, val_batch_size=100
+    use_cuda=torch.cuda.is_available(),
+    val_split=1000,
+    val_from_test=False,
+    val_batch_size=100,
 ):
 
     kwargs = {"num_workers": 1, "pin_memory": True} if use_cuda else {}

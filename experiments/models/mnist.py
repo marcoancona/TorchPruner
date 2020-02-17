@@ -47,7 +47,10 @@ def loss(output, target, reduction="mean"):
 def get_optimizer_for_model(model):
     return optim.SGD(model.parameters(), lr=0.01), None
 
-def get_dataset_and_loaders(use_cuda=torch.cuda.is_available(), val_split=1000, val_batch_size=1000):
+
+def get_dataset_and_loaders(
+    use_cuda=torch.cuda.is_available(), val_split=1000, val_batch_size=1000
+):
     kwargs = {"num_workers": 1, "pin_memory": True} if use_cuda else {}
     train_set = datasets.MNIST(
         "../data",
