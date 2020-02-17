@@ -124,15 +124,14 @@ COLORS = ["orange",
           "grey"]
 
 METHODS_MAPPING = {
-
-    "SV": ("SV, $\mu+2\sigma$ aggr. (5 samples)", COLORS[5]),
+    "SV mean+2std": ("SV, $\mu+2\sigma$ aggr.", COLORS[5]),
     "Random": ("Random", COLORS[0]),
     "Sensitivity": ("Saliency", COLORS[2]),
     "Taylor": ("Taylor", COLORS[1]),
     "APoZ": ("APoZ", COLORS[8]),
     "Weight Norm": ("$||w||_1$", COLORS[6]),
-    # "taylor": ("Taylor (no abs)", COLORS[3]),
-    # "sv-loss#10": ("SV, $\mu$ aggr. (5 samples)", "black"),
+    "Taylor signed": ("Taylor (no abs)", COLORS[3]),
+    "SV": ("SV, $\mu$ aggr.", "black"),
 }
 
 

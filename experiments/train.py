@@ -8,7 +8,7 @@ for a PyTorch model
 """
 
 
-def train(args, model, device, optimizer, epoch, loss, train_loader):
+def train(model, device, loss, train_loader, optimizer, epoch):
     model.train()
     correct = 0
     samples = 0
@@ -20,25 +20,25 @@ def train(args, model, device, optimizer, epoch, loss, train_loader):
         optimizer.zero_grad()
 
         output = model(data)
-        loss = loss(output, target)
-        cumulative_loss += loss.item() * len(target)
+        curr_loss = loss(output, target)
+        cumulative_loss += curr_loss.item() * len(target)
 
         current_pred = output.argmax(dim=1, keepdim=True)
         correct += current_pred.eq(target.view_as(current_pred)).sum().item()
         samples += len(target)
 
         # Perform optimization step
-        loss.backward()
+        curr_loss.backward()
         optimizer.step()
 
-        if batch_idx % (args.log_interval * 1) == 0:
+        if batch_idx % 20 == 0:
             print(
                 "Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f} \t Accuracy: {:.3f}\t Time: {:.1f}s".format(
                     epoch,
                     batch_idx * len(data),
                     len(train_loader.dataset),
                     100.0 * batch_idx / len(train_loader),
-                    loss.item(),
+                    curr_loss.item(),
                     correct / samples,
                     timer() - start,
                 )

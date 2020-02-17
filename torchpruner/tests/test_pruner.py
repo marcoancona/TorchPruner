@@ -158,3 +158,57 @@ class TestTorchPruner(TestCase):
         self.assertEqual(list(bn_module.running_mean.data.shape), [1])
 
         self.assertEqual(list(model(x).shape), list(y.shape))
+
+
+
+    def test_prune_model_with_sgd(self):
+        (x, y), _ = simple_model(self.device)
+        model = nn.Sequential(nn.Linear(3, 2), nn.BatchNorm1d(2), nn.Linear(2, 1)).to(
+            self.device
+        )
+        opt = torch.optim.SGD(model.parameters(), lr=0.01)
+        p = Pruner(model, input_size=(3,), device=self.device)
+
+        def step():
+            _y = model(x)
+            _y.mean().backward()
+            opt.step()
+
+        step()  # this should be ok
+
+        # Now prune something
+        module = list(model.children())[0]
+        bn_module = list(model.children())[1]
+        lin_module = list(model.children())[2]
+        pruning_indices = [0]
+        p.prune_model(module, pruning_indices, [bn_module, lin_module])
+
+        # this should be ok too because SGD does not use any momentum
+        step()
+
+    def test_prune_model_with_sgd_with_momentum(self):
+        (x, y), _ = simple_model(self.device)
+        model = nn.Sequential(nn.Linear(3, 2), nn.BatchNorm1d(2), nn.Linear(2, 1)).to(
+            self.device
+        )
+        opt = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0.01)
+        p = Pruner(model, input_size=(3,), device=self.device, optimizer=opt)
+
+        def step():
+            _y = model(x)
+            _y.mean().backward()
+            opt.step()
+
+        step()  # this should be ok
+
+        # Now prune something
+        module = list(model.children())[0]
+        bn_module = list(model.children())[1]
+        lin_module = list(model.children())[2]
+        pruning_indices = [0]
+        p.prune_model(module, pruning_indices, [bn_module, lin_module])
+
+        # now this should be ok too
+        step()
+
+

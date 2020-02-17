@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 from torch.nn.modules.conv import _ConvNd
 from torch.nn.modules.batchnorm import _BatchNorm
+from torchpruner.pruner.opt_pruner import OptimizerPruner
 import logging
 
 SUPPORTED_IN_PRUNING_MODULES = [nn.Linear, _ConvNd, nn.Dropout, _BatchNorm]
@@ -10,10 +11,11 @@ SUPPORTED_OUT_PRUNING_MODULES = [nn.Linear, _ConvNd]
 
 
 class Pruner:
-    def __init__(self, model, input_size, device):
+    def __init__(self, model, input_size, device, optimizer=None):
         self.model = model
         self.device = device
         self.input_size = input_size
+        self.optimizer = optimizer
 
     def prune_model(self, module, indices, cascading_modules=None):
         """
@@ -111,6 +113,12 @@ class Pruner:
             mask[indices] = False
             keep_indices = torch.tensor(np.arange(n)[mask]).to(self.device)
             param.data = param.data.index_select(axis, keep_indices)
+            # If gradient is not None, we need to slice it as well
+            if param.grad is not None:
+                param.grad.data = param.grad.data.index_select(axis, keep_indices)
+            # Finally, might need to slice other parameters in the optimizer
+            if self.optimizer is not None:
+                OptimizerPruner.prune(self.optimizer, param, axis, keep_indices, self.device)
 
     def _adjust_dropout(self, module, pruning_ratio):
         """
