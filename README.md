@@ -1,4 +1,4 @@
-TorchPruner:  *on-the-fly* structured pruning in PyTorch.
+TorchPruner:  *on-the-fly* structured pruning in PyTorch
 [![Build Status](https://travis-ci.org/marcoancona/TorchPruner.svg?branch=master)](https://travis-ci.org/marcoancona/TorchPruner)
 ===
 
