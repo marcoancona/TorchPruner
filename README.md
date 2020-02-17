@@ -1,17 +1,25 @@
-# Torch Pruning
-A library for structured pruning *on-the-fly* in PyTorch.
+# TorchPruner
+A library for *on-the-fly* structured pruning in PyTorch.
 
-This library contains two main modules: 
+This library provides tools to perform structured pruning of a PyTorch model. This includes a module to compute the "relevance score"
+or attributions for all activations of a specific layers, and helpers to run the pruning itself. 
 
-- `attributions`: this module implements several attributions metrics (sometimes
+*Why on-the-fly*? Because TorchPruner performs real pruning (slicing of the parameter tensors), 
+not just masking, therefore produces models with lower inference and training cost. Moreover, 
+TorchPruner can prune the parameters of multiple layers, as well as fix Dropout and optimizer state, 
+enabling pruning and training without the need to load a new model. 
+
+ 
+
+- [`Attributions module`](#attributions-module): this module implements several attributions metrics (sometimes
 also called pruning criteria) to evaluate the relevance of prunable units. 
 In a classical pruning pipeline, these metrics can be used to identify
  the least relevant units in the network, which will be then pruned.
 
-- [`pruner`](#pruner-module): this module provides tools to perform structured pruning of a PyTorch model. 
-While pruning is often simulated with masking, this library instead performs actual slicing operations
-on the parameter Tensors of the model to reduce the number of FLOPs.
-Pruning of Linear and Convolutional modules is supported. 
+- [`Pruner module`](#pruner-module): this module provides tools to perform structured pruning of a PyTorch model. 
+
+Structured pruning of *Linear* and *Convolutional* modules is supported at the moment.
+ 
 In the case of Linear modules, structured pruning consists in removing one or more output neurons. 
 In the case of Conv modules, output filters are removed.
 It is important to notice that the pruning of a module often requires to perform side pruning operations
