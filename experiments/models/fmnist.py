@@ -91,7 +91,7 @@ def get_dataset_and_loaders(use_cuda=torch.cuda.is_available()):
 
     kwargs = {"num_workers": 1, "pin_memory": True} if use_cuda else {}
     dataset = datasets.FashionMNIST(
-        "../data",
+        "./data",
         train=True,
         download=True,
         transform=transforms.Compose(
@@ -104,7 +104,7 @@ def get_dataset_and_loaders(use_cuda=torch.cuda.is_available()):
     )
 
     testset = datasets.FashionMNIST(
-        "../data", train=False, transform=transforms.Compose([transforms.ToTensor(),]),
+        "./data", train=False, transform=transforms.Compose([transforms.ToTensor(),]),
     )
 
     _, dataset_val = torch.utils.data.random_split(dataset, [len(dataset) - 1000, 1000])

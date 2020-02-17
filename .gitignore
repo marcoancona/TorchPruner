@@ -129,6 +129,7 @@ dmypy.json
 .pyre/
 
 \.idea/
+data/
 legacy/**/*
 experiments/data/*
 !experiments/data/.gitkeep

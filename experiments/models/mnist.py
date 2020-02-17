@@ -53,14 +53,14 @@ def get_dataset_and_loaders(
 ):
     kwargs = {"num_workers": 1, "pin_memory": True} if use_cuda else {}
     train_set = datasets.MNIST(
-        "../data",
+        "./data",
         train=True,
         download=True,
         transform=transforms.Compose([transforms.ToTensor(),]),
     )
 
     test_set = datasets.MNIST(
-        "../data", train=False, transform=transforms.Compose([transforms.ToTensor(),]),
+        "./data", train=False, transform=transforms.Compose([transforms.ToTensor(),]),
     )
 
     train_set, val_set = torch.utils.data.random_split(

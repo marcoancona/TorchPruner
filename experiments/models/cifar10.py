@@ -105,7 +105,7 @@ def get_dataset(use_cuda=torch.cuda.is_available()):
     )
 
     train_set = datasets.CIFAR10(
-        "../data",
+        "./data",
         train=True,
         download=True,
         transform=transforms.Compose(
@@ -119,7 +119,7 @@ def get_dataset(use_cuda=torch.cuda.is_available()):
     )
 
     test_set = datasets.CIFAR10(
-        "../data",
+        "./data",
         train=False,
         transform=transforms.Compose([transforms.ToTensor(), normalize]),
     )

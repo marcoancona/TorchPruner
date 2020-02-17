@@ -1,9 +1,9 @@
-TorchPruner:  *on-the-fly* structured pruning in PyTorch
+TorchPruner:  *on-the-fly* Structured Pruning in PyTorch
 [![Build Status](https://travis-ci.org/marcoancona/TorchPruner.svg?branch=master)](https://travis-ci.org/marcoancona/TorchPruner)
 ===
 
 This library provides tools to perform structured pruning of a PyTorch model. This includes a module to compute the "relevance score"
-or attributions for all activations of a specific layers, and helpers to run the pruning itself. 
+or attributions for all activations of a specific layer, and helpers to run the pruning itself. 
 
 *Why on-the-fly*? Because TorchPruner performs real pruning (slicing of the parameter tensors), 
 not just masking, therefore produces models with lower inference and training cost. Moreover, 
@@ -21,7 +21,7 @@ In a classical pruning pipeline, these metrics can be used to identify
 
 Structured pruning of *Linear* and *Convolutional* modules is supported at the moment.
  
-In the case of Linear modules, structured pruning consists in removing one or more output neurons. 
+In the case of Linear modules, structured pruning consists of removing one or more output neurons. 
 In the case of Conv modules, output filters are removed.
 It is important to notice that the pruning of a module often requires to perform side pruning operations
 to keep the shape of the tensors of the *following* layers compatible. This library provides
@@ -117,7 +117,7 @@ Parameter name  | Type | Description
 `device` | `torch.device`, required | Should be the same device your model and data run on.
 `optimizer` | `torch.Optimizer`, optional | If provided, TorchPruner will adjust the state of the optimizer (e.g. the `momentum` Tensor) to be compatible with the new parameter shape. Only `SGD` supported at the moment.
 
-#### `prune_model(module, indices, cascading_modules=None`
+#### `prune_model(module, indices, cascading_modules=None)`
 
 
 Parameter name  | Type | Description
