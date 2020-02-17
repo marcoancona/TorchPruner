@@ -1,5 +1,6 @@
-# TorchPruner
-A library for *on-the-fly* structured pruning in PyTorch.
+TorchPruner:  *on-the-fly* structured pruning in PyTorch.
+[![Build Status](https://travis-ci.org/marcoancona/TorchPruner.svg?branch=master)](https://travis-ci.org/marcoancona/TorchPruner)
+===
 
 This library provides tools to perform structured pruning of a PyTorch model. This includes a module to compute the "relevance score"
 or attributions for all activations of a specific layers, and helpers to run the pruning itself. 
