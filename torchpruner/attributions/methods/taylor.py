@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 from ..attributions import _AttributionMetric
 
 
@@ -17,7 +18,8 @@ class TaylorAttributionMetric(_AttributionMetric):
     def run(self, module, **kwargs):
         module = super().run(module, **kwargs)
         handles = [module.register_forward_hook(self._forward_hook()),
-                   module.register_backward_hook(self._backward_hook())]
+                   module.register_backward_hook(self._backward_hook())
+                   ]
         self.run_all_forward_and_backward()
         attr = module._tp_taylor
         result = self.aggregate_over_samples(attr)
@@ -29,7 +31,8 @@ class TaylorAttributionMetric(_AttributionMetric):
     @staticmethod
     def _forward_hook():
         def _hook(module, _, output):
-            module._tp_activation = output
+            with torch.no_grad():
+                module._tp_activation = output.detach().clone()
         return _hook
 
     def _backward_hook(self):
