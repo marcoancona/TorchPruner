@@ -15,43 +15,6 @@ def now():
     return datetime.now().strftime("%Y%m%dT%H%M%S")
 
 
-def _save_pruner_state(state, path):
-    with open(path, "wb") as handle:
-        pickle.dump(state, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
-
-def _load_pruner_state(path):
-    with open(f"{path}", "rb") as handle:
-        state = pickle.load(handle)
-    return state
-
-
-def save_model_state(state, model_name, timestamp):
-    if not os.path.exists(f"{current_dir}/weights/"):
-        os.makedirs(f"{current_dir}/weights/")
-    torch.save(state, f"{current_dir}/weights/{model_name}_{timestamp}.pt")
-    # Saving also without timestamp suffix makes it easier to just load the "last"
-    torch.save(state, f"{current_dir}/weights/{model_name}.pt")
-
-
-def load_model_state(model, model_name, timestamp):
-    print(f"Loading {model_name}_{timestamp}")
-    load_path = model_name
-    if isinstance(timestamp, str) and len(timestamp) > 0 and timestamp != "last":
-        load_path += f"_{timestamp}"
-    print(f"Loading {current_dir}/weights/{load_path}.pt")
-    model.load_state_dict(torch.load(f"{current_dir}/weights/{load_path}.pt"))
-
-
-def log_dict(filename, dict):
-    with open(f"{current_dir}/results/{filename}.csv", "a", newline="") as csvfile:
-        fieldnames = list(dict.keys())
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        if csvfile.tell() == 0:
-            writer.writeheader()
-        writer.writerow(dict)
-
-
 def get_module_name(model, module):
     for module_name, m in model.named_modules():
         if module == m:
@@ -137,8 +100,6 @@ METHODS_MAPPING = {
 
 def map_method_vis(method_name):
     return METHODS_MAPPING[method_name]
-
-
 
 
 def format_plt(ax, title, xlabel, ylabel):
