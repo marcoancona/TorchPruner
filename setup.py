@@ -11,6 +11,8 @@ setup(name='torchpruner',
       install_requires=[
             'numpy',
             'scipy',
+            'matplotlib',
+            'thop'
       ],
       extras_require={
             "torch": ["torch>=1.2.0"]

@@ -1,6 +1,4 @@
 from unittest import TestCase
-import pkg_resources
-import logging, warnings
 import numpy as np
 import torch
 import torch.nn as nn
