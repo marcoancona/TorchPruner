@@ -6,7 +6,7 @@ from ..attributions import _AttributionMetric
 
 class ShapleyAttributionMetric(_AttributionMetric):
     """
-    Compute attributions as Shapley values
+    Compute attributions as approximate Shapley values using sampling.
     """
 
     def __init__(self, *args, sv_samples=5, **kwargs):
@@ -18,13 +18,19 @@ class ShapleyAttributionMetric(_AttributionMetric):
         module = super().run(module, **kwargs)
         sv_samples = sv_samples if sv_samples is not None else self.samples
         if hasattr(self.model, "forward_partial"):
-            # print (f"--> can run with partials")
             result = self.run_module_with_partial(module, sv_samples)
         else:
+            logging.warning("Consider adding a 'forward_partial' method to your model to speed-up Shapley values "
+                            "computation")
             result = self.run_module(module, sv_samples)
         return result
 
-    def run_module_with_partial(self, module, samples):
+    def run_module_with_partial(self, module, sv_samples):
+        """
+        Implementation of Shapley value monte carlo sampling for models
+        that provides a `forward_partial` function. This is significantly faster
+        than run_module(), as it only runs the forward pass on the necessary modules.
+        """
         d = len(self.data_gen.dataset)
         sv = None
         permutations = None
@@ -37,13 +43,12 @@ class ShapleyAttributionMetric(_AttributionMetric):
                 _, original_loss = self.run_forward_partial(original_z, y_true=y, from_module=module)
                 n = original_z.shape[1]  # prunable dimension
                 if permutations is None:
-                    # Keep same permutations for all batches
-                    permutations = [np.random.permutation(n) for _ in range(samples)]
+                    # Keep the same permutations for all batches
+                    permutations = [np.random.permutation(n) for _ in range(sv_samples)]
                 if sv is None:
                     sv = np.zeros((d, n))
 
-                for j in range(samples):
-                    # print (f"Sample {j}")
+                for j in range(sv_samples):
                     loss = original_loss.detach().clone()
                     z = original_z.clone().detach()
 
@@ -52,16 +57,18 @@ class ShapleyAttributionMetric(_AttributionMetric):
                         _, new_loss = self.run_forward_partial(z, y_true=y, from_module=module)
                         delta = new_loss - loss
                         n = delta.shape[0]
-                        sv[c:c+n, i] += (delta / samples).squeeze().detach().cpu().numpy()
+                        sv[c:c+n, i] += (delta / sv_samples).squeeze().detach().cpu().numpy()
                         loss = new_loss
                 c += n
 
-            # zero_player_loss = self.run_forward(loss_reduction="none")
-            # print ((zero_player_loss-original_loss).mean(0))
-            # print (sv.mean(0).sum())
             return self.aggregate_over_samples(sv)
 
     def run_module(self, module, samples):
+        """
+        Implementation of Shapley value monte carlo sampling.
+        No further changes to the model are necessary but this can be quite slow.
+        See run_module_with_partial() for a faster version that uses partial evaluation.
+        """
         with torch.no_grad():
             self.mask_indices = []
             handle = module.register_forward_hook(self._forward_hook())
@@ -79,9 +86,6 @@ class ShapleyAttributionMetric(_AttributionMetric):
                     sv[:, i] += ((new_loss - loss) / samples).squeeze().detach().cpu().numpy()
                     loss = new_loss
 
-            # zero_player_loss = self.run_forward(loss_reduction="none")
-            # print ((zero_player_loss-original_loss).mean(0))
-            # print (sv.mean(0).sum())
             handle.remove()
             return self.aggregate_over_samples(sv)
 

@@ -60,6 +60,17 @@ class TestTorchPruner(TestCase):
             y.detach().cpu().numpy(), y_pred.detach().cpu().numpy()
         )
 
+    ##
+    # def test_set_deterministic(self):
+    #     x, y, model = max_model(self.device)
+    #     datagen = torch.utils.data.DataLoader(
+    #         dataset=TensorDataset(x, y), batch_size=1, shuffle=False,
+    #     )
+    #     self.assertFalse(torch.backends.cudnn.deterministic)
+    #     a = APoZAttributionMetric(model, datagen, F.mse_loss, self.device)
+    #     a.run(list(model.children())[0])
+    #     self.assertTrue(torch.backends.cudnn.deterministic)
+
     def test_random(self):
         x, y, model = max_model(self.device)
         datagen = torch.utils.data.DataLoader(

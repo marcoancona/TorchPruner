@@ -33,7 +33,7 @@ TorchPruner Quickstart
 ===
 ## Installation
 ```unix
-TODO
+pip install -e git+https://github.com/marcoancona/TorchPruner.git#egg=torchpruner
 ```
 
 Notice that DeepExplain assumes you already have installed `PyTorch >= 1.3`.

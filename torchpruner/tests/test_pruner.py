@@ -156,7 +156,6 @@ class TestTorchPruner(TestCase):
         self.assertEqual(list(bn_module.bias.data.shape), [1])
         self.assertEqual(list(bn_module.running_var.data.shape), [1])
         self.assertEqual(list(bn_module.running_mean.data.shape), [1])
-
         self.assertEqual(list(model(x).shape), list(y.shape))
 
 

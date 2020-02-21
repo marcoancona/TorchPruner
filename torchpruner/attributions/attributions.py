@@ -21,6 +21,8 @@ class _AttributionMetric(ABC):
         self.criterion = criterion
         self.device = device
         self.reduction = reduction
+        self.deterministic = False
+        self.benchmark = False
 
     @abstractmethod
     def run(self, module, **kwargs):
@@ -35,12 +37,12 @@ class _AttributionMetric(ABC):
         else:
             return module
 
-
     def run_all_forward(self):
         """
         Run forward pass on all data in `data_gen`, returning loss for each example
         :return: Tensor
         """
+        self.set_deterministic()
         cumulative_loss = None
         with torch.no_grad():
             for idx, (x, y) in enumerate(self.data_gen):
@@ -50,6 +52,7 @@ class _AttributionMetric(ABC):
                     cumulative_loss = loss
                 else:
                     cumulative_loss = torch.cat((cumulative_loss, loss), 0)
+            self.restore_deterministic()
             return cumulative_loss
 
     def run_all_forward_and_backward(self):
@@ -57,10 +60,12 @@ class _AttributionMetric(ABC):
         Run forward and backward passes on all data in `data_gen`
         :return: None
         """
+        self.set_deterministic()
         for idx, (x, y) in enumerate(self.data_gen):
             x, y = x.to(self.device), y.to(self.device)
             loss = self.criterion(self.model(x), y)
             loss.backward()
+        self.restore_deterministic()
 
     def run_forward_partial(
         self, x=None, y_true=None, to_module=None, from_module=None
@@ -75,10 +80,12 @@ class _AttributionMetric(ABC):
         :param from_module:
         :return:
         """
+        self.set_deterministic()
         loss = None
         y = self.model.forward_partial(x, to_module=to_module, from_module=from_module,)
         if y_true is not None and to_module is None:
             loss = self.criterion(y, y_true, reduction="none")
+        self.restore_deterministic()
         return y, loss
 
     def aggregate_over_samples(self, attributions):
@@ -97,4 +104,15 @@ class _AttributionMetric(ABC):
             return attributions
         else:  # a function
             return self.reduction(attributions)
+
+    def set_deterministic(self):
+        self.deterministic = torch.backends.cudnn.deterministic
+        self.benchmark = torch.backends.cudnn.benchmark
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+    def restore_deterministic(self):
+        torch.backends.cudnn.deterministic = self.deterministic
+        torch.backends.cudnn.benchmark = self.benchmark
+
 

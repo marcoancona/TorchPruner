@@ -131,6 +131,7 @@ dmypy.json
 \.idea/
 data/
 legacy/**/*
+experiments/results/*
 experiments/data/*
 !experiments/data/.gitkeep
 #experiments/results/*
