@@ -7,7 +7,7 @@ or attributions for all activations of a specific layer, and helpers to run the 
 
 *Why on-the-fly*? Because TorchPruner performs real pruning (slicing of the parameter tensors), 
 not just masking, therefore produces models with lower inference and training cost. Moreover, 
-TorchPruner can prune the parameters of multiple layers, as well as fix Dropout and optimizer state, 
+TorchPruner is designed to prune the parameters of multiple layers, as well as to adjust the dropout and optimizer state, 
 enabling pruning and training without the need to load a new model. 
 
  
