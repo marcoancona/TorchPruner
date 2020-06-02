@@ -79,7 +79,7 @@ Parameter name  | Type | Description
 ---------------|------|------------
 `module` | PyTorch module, required | A leaf PyTorch module within your model to compute attributions for.
 `scores` | `np.array` | Scores for the module activations. This is a one-dimensional array where the length equals `z.shape[1]` (`z` being the module activation Tensor).
-`find_best_evaluation_module` | bool, optional | By default, attributions are computed on the output of `module`. Sometimes it is preferable to compute attributions after BatchNormalization and nn-linear activation  
+`find_best_evaluation_module` | bool, optional | By default, attributions are computed on the output of `module`. Sometimes it is preferable to compute attributions after the BatchNormalization and the non-linear activations 
 
 
 Additional parameters (`**kwargs`) are method-specific: 
