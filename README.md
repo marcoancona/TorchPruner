@@ -47,7 +47,7 @@ Implements the following attribution methods:
 - `SensitivityAttributionMetric` (https://arxiv.org/abs/1812.10240)
 - `TaylorAttributionMetric` (https://openreview.net/forum?id=SJGCiw5gl)
 - `WeightNormAttributionMetric` (https://arxiv.org/abs/1608.08710)
-- `ShapleyAttributionMetric` 
+- `ShapleyAttributionMetric` (https://arxiv.org/abs/2006.01795)
 
 #### Usage
 
